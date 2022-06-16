@@ -15,11 +15,12 @@ import hre, { starknet, network, ethers } from "hardhat";
 import {
   StarknetContractFactory,
   StarknetContract,
-  HttpNetworkConfig,
+  HardhatUserConfig,
   Account,
   StringMap,
 } from "hardhat/types";
 import { solidity } from "ethereum-waffle";
+import config from "../hardhat.config";
 
 import { TIMEOUT } from "./constants";
 import { expectAddressEquality, uintFromParts } from "./utils";
@@ -37,7 +38,9 @@ const usdcAmount = 300n * USDC_UNIT;
 describe("Bridge", async function () {
   this.timeout(TIMEOUT);
 
-  const networkUrl: string = (network.config as HttpNetworkConfig).url;
+  const networkUrl =
+    (config as HardhatUserConfig).networks?.l1_testnet?.url ||
+    "http://localhost:8545";
 
   // users
   let l1user: SignerWithAddress;
@@ -119,116 +122,109 @@ describe("Bridge", async function () {
       await starknet.devnet.loadL1MessagingContract(networkUrl)
     ).address;
 
-    // // L2 deployments
+    // L2 deployments
 
-    // l2owner = await starknet.deployAccount("OpenZeppelin");
-    // l2user = await starknet.deployAccount("OpenZeppelin");
+    l2owner = await starknet.deployAccount("OpenZeppelin");
+    l2user = await starknet.deployAccount("OpenZeppelin");
 
-    // l2BridgeFactory = await starknet.getContractFactory("bridge");
-    // l2BridgeImpl = await l2BridgeFactory.deploy();
+    l2BridgeFactory = await starknet.getContractFactory("bridge");
+    l2BridgeImpl = await l2BridgeFactory.deploy();
 
-    // l2ProxyFactory = await starknet.getContractFactory("l2/lib/proxy");
-    // l2BridgeProxy = await l2ProxyFactory.deploy({
-    //   proxy_admin: BigInt(l2user.starknetContract.address),
-    // });
-    // l2StaticADaiProxy = await l2ProxyFactory.deploy({
-    //   proxy_admin: BigInt(l2user.starknetContract.address),
-    // });
-    // l2StaticAUsdcProxy = await l2ProxyFactory.deploy({
-    //   proxy_admin: BigInt(l2user.starknetContract.address),
-    // });
+    l2ProxyFactory = await starknet.getContractFactory("l2/lib/proxy");
+    l2BridgeProxy = await l2ProxyFactory.deploy({
+      proxy_admin: BigInt(l2user.starknetContract.address),
+    });
+    l2StaticADaiProxy = await l2ProxyFactory.deploy({
+      proxy_admin: BigInt(l2user.starknetContract.address),
+    });
+    l2StaticAUsdcProxy = await l2ProxyFactory.deploy({
+      proxy_admin: BigInt(l2user.starknetContract.address),
+    });
 
-    // const rewAaveContractFactory = await starknet.getContractFactory(
-    //   "l2/tokens/rewAAVE"
-    // );
-    // l2rewAAVEImpl = await rewAaveContractFactory.deploy();
-    // l2rewAAVEProxy = await l2ProxyFactory.deploy({
-    //   proxy_admin: BigInt(l2owner.starknetContract.address),
-    // });
+    const rewAaveContractFactory = await starknet.getContractFactory(
+      "l2/tokens/rewAAVE"
+    );
+    l2rewAAVEImpl = await rewAaveContractFactory.deploy();
+    l2rewAAVEProxy = await l2ProxyFactory.deploy({
+      proxy_admin: BigInt(l2owner.starknetContract.address),
+    });
 
-    // await l2owner.invoke(l2rewAAVEProxy, "initialize_proxy", {
-    //   implementation_address: BigInt(l2rewAAVEImpl.address),
-    // });
-    // l2rewAAVE = rewAaveContractFactory.getContractAt(l2rewAAVEProxy.address);
+    await l2owner.invoke(l2rewAAVEProxy, "initialize_proxy", {
+      implementation_address: BigInt(l2rewAAVEImpl.address),
+    });
+    l2rewAAVE = rewAaveContractFactory.getContractAt(l2rewAAVEProxy.address);
 
-    // await l2owner.invoke(l2rewAAVE, "initialize_rewAAVE", {
-    //   name: 444,
-    //   symbol: 444,
-    //   decimals: 18n,
-    //   initial_supply: { high: 0n, low: 0n },
-    //   recipient: BigInt(l2user.starknetContract.address),
-    //   owner: BigInt(l2BridgeProxy.address),
-    // });
+    await l2owner.invoke(l2rewAAVE, "initialize_rewAAVE", {
+      name: 444,
+      symbol: 444,
+      decimals: 18n,
+      initial_supply: { high: 0n, low: 0n },
+      recipient: BigInt(l2user.starknetContract.address),
+      owner: BigInt(l2BridgeProxy.address),
+    });
 
-    // l2TokenFactory = await starknet.getContractFactory("static_a_token");
-    // l2StaticADaiImpl = await l2TokenFactory.deploy();
-    // l2StaticAUsdcImpl = await l2TokenFactory.deploy();
+    l2TokenFactory = await starknet.getContractFactory("static_a_token");
+    l2StaticADaiImpl = await l2TokenFactory.deploy();
+    l2StaticAUsdcImpl = await l2TokenFactory.deploy();
 
-    // // L1 deployments
+    // L1 deployments
 
-    // [signer, l1user, l1ProxyAdmin] = await ethers.getSigners();
+    [signer, l1user, l1ProxyAdmin] = await ethers.getSigners();
 
-    // pool = await ethers.getContractAt("LendingPool", LENDING_POOL);
-    // incentives = await ethers.getContractAt(
-    //   "IncentivesControllerMock",
-    //   INCENTIVES_CONTROLLER
-    // );
+    pool = await ethers.getContractAt("LendingPool", LENDING_POOL);
+    incentives = await ethers.getContractAt(
+      "IncentivesControllerMock",
+      INCENTIVES_CONTROLLER
+    );
 
-    // aDai = await ethers.getContractAt("AToken", A_DAI);
-    // dai = await ethers.getContractAt(
-    //   "ERC20",
-    //   await aDai.UNDERLYING_ASSET_ADDRESS()
-    // );
-    // aUsdc = await ethers.getContractAt("AToken", A_USDC);
-    // usdc = await ethers.getContractAt(
-    //   "ERC20",
-    //   await aUsdc.UNDERLYING_ASSET_ADDRESS()
-    // );
+    aDai = await ethers.getContractAt("AToken", A_DAI);
+    dai = await ethers.getContractAt(
+      "ERC20",
+      await aDai.UNDERLYING_ASSET_ADDRESS()
+    );
+    aUsdc = await ethers.getContractAt("AToken", A_USDC);
+    usdc = await ethers.getContractAt(
+      "ERC20",
+      await aUsdc.UNDERLYING_ASSET_ADDRESS()
+    );
 
-    // const provider = new ethers.providers.JsonRpcProvider(networkUrl);
-    // daiWhale = provider.getSigner(DAI_WHALE);
-    // usdcWhale = provider.getSigner(USDC_WHALE);
-    // stkaaveWhale = provider.getSigner(STKAAVE_WHALE);
-    // emissionManager = provider.getSigner(EMISSION_MANAGER);
+    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
+    daiWhale = provider.getSigner(DAI_WHALE);
+    usdcWhale = provider.getSigner(USDC_WHALE);
+    stkaaveWhale = provider.getSigner(STKAAVE_WHALE);
+    emissionManager = provider.getSigner(EMISSION_MANAGER);
 
-    // await signer.sendTransaction({
-    //   from: signer.address,
-    //   to: daiWhale._address,
-    //   value: ethers.utils.parseEther("1.0"),
-    // });
-    // await signer.sendTransaction({
-    //   from: signer.address,
-    //   to: usdcWhale._address,
-    //   value: ethers.utils.parseEther("1.0"),
-    // });
-    // await signer.sendTransaction({
-    //   from: signer.address,
-    //   to: stkaaveWhale._address,
-    //   value: ethers.utils.parseEther("1.0"),
-    // });
-    // await signer.sendTransaction({
-    //   from: signer.address,
-    //   to: emissionManager._address,
-    //   value: ethers.utils.parseEther("1.0"),
-    // });
+    await signer.sendTransaction({
+      from: signer.address,
+      to: daiWhale._address,
+      value: ethers.utils.parseEther("1.0"),
+    });
+    await signer.sendTransaction({
+      from: signer.address,
+      to: usdcWhale._address,
+      value: ethers.utils.parseEther("1.0"),
+    });
+    await signer.sendTransaction({
+      from: signer.address,
+      to: stkaaveWhale._address,
+      value: ethers.utils.parseEther("1.0"),
+    });
+    await signer.sendTransaction({
+      from: signer.address,
+      to: emissionManager._address,
+      value: ethers.utils.parseEther("1.0"),
+    });
 
-    // l1BridgeFactory = await ethers.getContractFactory("Bridge", signer);
-    // l1BridgeImpl = await l1BridgeFactory.deploy();
-    // await l1BridgeImpl.deployed();
+    l1BridgeFactory = await ethers.getContractFactory("Bridge", signer);
+    l1BridgeImpl = await l1BridgeFactory.deploy();
+    await l1BridgeImpl.deployed();
 
-    // l1ProxyBridgeFactory = await ethers.getContractFactory(
-    //   "InitializableAdminUpgradeabilityProxy",
-    //   l1ProxyAdmin
-    // );
-    // l1BridgeProxy = await l1ProxyBridgeFactory.deploy();
-    // await l1BridgeProxy.deployed();
-  });
-
-  it("log some stuff", async () => {
-    console.log("XXXXXXXXXXXXXXXXXXXXXX");
-    console.log("XXXXXXXXXXXXXXXXXXXXXX");
-    console.log("XXXXXXXXXXXXXXXXXXXXXX");
-    console.log(networkUrl);
+    l1ProxyBridgeFactory = await ethers.getContractFactory(
+      "InitializableAdminUpgradeabilityProxy",
+      l1ProxyAdmin
+    );
+    l1BridgeProxy = await l1ProxyBridgeFactory.deploy();
+    await l1BridgeProxy.deployed();
   });
 
   it("dai and usdc whales convert their tokens to aTokens", async () => {

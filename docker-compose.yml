@@ -3,26 +3,19 @@ services:
   testnet-l1:
     build:
       context: .
-      dockerfile: Dockerfile
     container_name: testnet-l1
-    env_file: .env
     command: yarn testnet:l1
     ports:
       - "8545:8545"
   testnet-l2:
     build:
       context: .
-      dockerfile: Dockerfile
     container_name: testnet-l2
-    env_file: .env
     command: yarn testnet:l2
     ports:
       - "5000:5000"
   test-runner:
     build:
       context: .
-      dockerfile: Dockerfile
-      network: host
     container_name: test-runner
-    env_file: .env
     command: sleep 99999
