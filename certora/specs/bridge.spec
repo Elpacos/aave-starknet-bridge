@@ -58,6 +58,8 @@ methods {
 /************************************************
  *    IATokenWithPool + IScaledBalanceToken     *
  *******************************/
+    mint(address, uint256, uint256) returns (bool) => DISPATCHER(true)
+    burn(address,address, uint256, uint256) => DISPATCHER(true)
     TOKEN_A.UNDERLYING_ASSET_ADDRESS() returns (address) envfree => DISPATCHER(true)
     POOL() returns (address) envfree => DISPATCHER(true)
     scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
