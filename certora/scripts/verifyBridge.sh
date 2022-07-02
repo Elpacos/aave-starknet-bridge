@@ -3,10 +3,10 @@ then
     RULE="--rule $1"
 fi
 
-certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20A.sol certora/harness/DummyERC20B.sol certora/harness/DummyERC20C.sol certora/harness/SymbolicLendingPoolA.sol certora/harness/SymbolicLendingPoolB.sol certora/harness/IncentivesControllerMock.sol \
+certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20UnderlyingA.sol certora/harness/DummyERC20UnderlyingB.sol certora/harness/DummyERC20RewardToken.sol certora/harness/SymbolicLendingPool.sol certora/harness/IncentivesControllerMock.sol certora/harness/ATokenWithPoolA.sol certora/harness/ATokenWithPoolB.sol \
             --verify BridgeHarness:certora/specs/bridge.spec \
-            --link BridgeHarness:_rewardToken=DummyERC20C BridgeHarness:_incentivesController=IncentivesControllerMock \
-            IncentivesControllerMock:Reward_Token=DummyERC20C \
+            --link BridgeHarness:_rewardToken=DummyERC20RewardToken BridgeHarness:_incentivesController=IncentivesControllerMock \
+            IncentivesControllerMock:REWARD_TOKEN=DummyERC20RewardToken \
             --solc solc8.10 \
             --optimistic_loop \
             --loop_iter 9 \

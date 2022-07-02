@@ -2,18 +2,17 @@ import "erc20.spec"
 
 // Declaring aliases for contracts according to the format:
 // using Target_Contract as Alias_Name
-using DummyERC20A as UNDERLYING_ASSET_A
-using DummyERC20B as UNDERLYING_ASSET_B
-using DummyERC20C as REWARD_TOKEN
+using DummyERC20UnderlyingA as UNDERLYING_ASSET_A
+using DummyERC20UnderlyingB as UNDERLYING_ASSET_B
+using DummyERC20RewardToken as REWARD_TOKEN_C
 using ATokenWithPoolA as ATOKEN_A
 using ATokenWithPoolB as ATOKEN_B
-using SymbolicLendingPoolA as LENDINGPOOL_A
-using SymbolicLendingPoolB as LENDINGPOOL_B
+using SymbolicLendingPool as LENDINGPOOL
 
 methods {
-    /**********************
-     *     Bridge.sol     *
-     **********************/
+/**********************
+ *     Bridge.sol     *
+ **********************/
     deposit(address, uint256, uint16, bool) returns (uint256) 
     withdraw(address, uint256, address, uint256, uint256, bool)
     updateL2State(address)
@@ -31,40 +30,41 @@ methods {
     _consumeBridgeRewardMessage(uint256, address, uint256)
     _transferRewards(address, uint256)
 
-    /******************************
-     *     IStarknetMessaging     *
-     ******************************/
+/*************************
+ *     BridgeHarness     *
+ *************************/
+    // Not that these methods return the contract types that are written in comment to their right.
+    // In CVL we contracts are addresses an therefore we demand return of an address
+    getUnderlyingAssetOfAToken(address) returns (address) envfree //(IERC20)
+    getLendingPoolOfAToken(address) returns (address) envfree //(ILendingPool)
+
+/******************************
+ *     IStarknetMessaging     *
+ ******************************/
     // These methods' return values are never used, and they do not change the bridges state variables.
     // Therefore havocing is an over-approximation that should not harm verification of Bridge.sol
-    sendMessageToL2(uint256, uint256, uint256[]) returns (bytes32) => HAVOC_ECF
-    consumeMessageFromL2(uint256, uint256[]) returns (bytes32) => HAVOC_ECF
+    sendMessageToL2(uint256, uint256, uint256[]) returns (bytes32) => NONDET
+    consumeMessageFromL2(uint256, uint256[]) returns (bytes32) => NONDET
 
-    /*******************************
-     *     IScaledBalanceToken     *
-     *******************************/
-    // 
-    scaledTotalSupply() returns (uint256) => 
-
-    /************************
-     *     ILendingPool     *
-     ************************/
+/************************
+ *     ILendingPool     *
+ ************************/
     // The lending pool used in the contract is encapsulated within a struct in IBridge.sol.
     // We point to direct calls to these methods using dispatchers. 
     deposit(address, uint256, address, uint16) => DISPATCHER(true)
     withdraw(address, uint256, address) returns (uint256) => DISPATCHER(true)
     getReserveNormalizedIncome(address) returns (uint256) => DISPATCHER(true)
 
-    /*************************
-     *     BridgeHarness     *
-     *************************/
-    // Not that these methods return the contract types that are written in comment to their right.
-    // In CVL we contracts are addresses an therefore we demand return of an address
-    getUnderlyingAssetOfAToken(address) returns (address) envfree //(IERC20)
-    getLendingPoolOfAToken(address) returns (address) envfree //(ILendingPool)
+/************************************************
+ *    IATokenWithPool + IScaledBalanceToken     *
+ *******************************/
+    UNDERLYING_ASSET_ADDRESS() returns (address) envfree
+    pool() returns (address) envfree 
+    scaledTotalSupply() returns (uint256) envfree
 
-    /************************************
-     *     IncentivesControllerMock     *
-     ************************************/
+/************************************
+ *     IncentivesControllerMock     *
+ ************************************/
     REWARD_TOKEN() returns (address) envfree
     DISTRIBUTION_END() returns (uint256) envfree
     getRewardsVault() returns (address) envfree
@@ -76,7 +76,7 @@ methods {
 
 // Linkning the instances of ERC20 and LendingPool within the ATokenData struct the corresponding AToken to specific symbolic contract
 // The if-else structure allows setting each AToken with a desired underlying asset and lending pool so that 2 ATokens can be compared.
-function setLinkage(address AToken, uint8 underlyingContract, uint8 poolContract){
+function setLinkage(address AToken, uint8 underlyingContract){
     // Setting the underlying token of the given AToken as either UNDERLYING_ASSET_A or UNDERLYING_ASSET_B
     if (underlyingContract == 1){
         require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_A;
@@ -86,20 +86,7 @@ function setLinkage(address AToken, uint8 underlyingContract, uint8 poolContract
         require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_B;
         require ATOKEN_B.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_B;
     }
-
-    // Setting the underlying token of the given AToken as either LENDINGPOOL_A or LENDINGPOOL_B
-    if (poolContract == 1){
-        require getLendingPoolOfAToken(AToken) == LENDINGPOOL_A;
-        require ATOKEN_A.POOL() == LENDINGPOOL_A;
-    }
-    else{
-        require getLendingPoolOfAToken(AToken) == LENDINGPOOL_B;
-        require ATOKEN_B.POOL() == LENDINGPOOL_B;
-    }
-}
-
-function setTotalSupplyScale(uint256 ratio) returns uint256 {
-
+    require getLendingPoolOfAToken(AToken) == LENDINGPOOL;
 }
 
 rule sanity(method f)

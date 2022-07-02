@@ -4,38 +4,15 @@ pragma experimental ABIEncoderV2;
 import {IERC20} from '@aave/core-v3/contracts/dependencies/openzeppelin/contracts/IERC20.sol';
 
 contract IncentivesControllerMock {
-  address internal Reward_Token;
-  uint256 internal Distribution_End;
-  address internal _rewardsVault;
-  mapping(address => assetData) internal Asset_Data;
+  address public REWARD_TOKEN;
+  uint256 public DISTRIBUTION_END;
+  address public REWARDS_VAULT;
+  mapping(address => assetData) public Asset_Data;
 
     struct assetData {
         uint256 index;
         uint256 emissionPerSecond;
         uint256 lastUpdate;
-    }
-
-  /**
-   * @notice for backward compatibility with previous implementation of the Incentives controller
-   * @return The address of the reward token
-   */
-  function REWARD_TOKEN() external view returns (address){
-      return Reward_Token;
-  }
-
-    /**
-     * @dev Gets the distribution end timestamp of the emissions
-     */
-    function DISTRIBUTION_END() external view returns (uint256){
-        return Distribution_End;
-    }
-
-    /**
-     * @dev returns the current rewards vault contract
-     * @return address
-     */
-    function getRewardsVault() external view returns (address) {
-        return _rewardsVault;
     }
 
     /*
@@ -61,7 +38,8 @@ contract IncentivesControllerMock {
         uint256 amount,
         address to
     ) external returns (uint256){
-        IERC20(Reward_Token).transferFrom(_rewardsVault, to, amount);
+        IERC20(REWARD_TOKEN).transferFrom(REWARDS_VAULT, to, amount);
+        return amount;
     }
 
 }
