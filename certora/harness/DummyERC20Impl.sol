@@ -25,10 +25,10 @@ contract DummyERC20Impl {
         return a-b;
     }
 
-    function totalSupply() external view returns (uint256) {
+    function totalSupply() public view returns (uint256) {
         return t;
     }
-    function balanceOf(address account) external view returns (uint256) {
+    function balanceOf(address account) public view returns (uint256) {
         return b[account];
     }
     function transfer(address recipient, uint256 amount) external returns (bool) {
@@ -39,6 +39,7 @@ contract DummyERC20Impl {
     function allowance(address owner, address spender) external view returns (uint256) {
         return a[owner][spender];
     }
+
     function approve(address spender, uint256 amount) external returns (bool) {
         a[msg.sender][spender] = amount;
         return true;

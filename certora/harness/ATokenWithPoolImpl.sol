@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: agpl-3.0
 pragma solidity ^0.8.0;
 
-import {IERC20} from "./DummyERC20Impl.sol";
-import {ILendingPool} from "./SymbolicLendingPool.sol";
+// import {IScaledBalanceToken} from "@aave/core-v3/contracts/interfaces/IScaledBalanceToken.sol";
+import {IATokenWithPool} from "../../contracts/l1/interfaces/IATokenWithPool.sol";
+import {IERC20} from "@aave/core-v3/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
+import {ILendingPool} from "../../contracts/l1/interfaces/ILendingPool.sol";
+import {IAaveIncentivesController} from "../../contracts/l1/interfaces/IAaveIncentivesController.sol";
+import "./DummyERC20Impl.sol";
 
 
 contract ATokenWithPoolImpl is DummyERC20Impl {
   
     address public UNDERLYING_ASSET_ADDRESS;
     ILendingPool public POOL;
-
+    IAaveIncentivesController public INCENTIVES_CONTROLLER;
 
     modifier onlyLendingPool() {
         require(msg.sender == address(POOL));
@@ -28,18 +32,18 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
         address user,
         uint256 amount,
         uint256 index
-    ) external override onlyLendingPool returns (bool) {
+    ) external onlyLendingPool returns (bool) {
         require(user != address(0), "attempted to mint to the 0 address");
         // shortcut to save gas
         require(amount != 0, "attempt to mint 0 tokens");
     
         // Updating the total supply
         uint256 oldTotalSupply = super.totalSupply();
-        t = oldTotalSupply.add(amount);
+        t = oldTotalSupply + amount;
 
         // Updating the balance of user to which to tokens were minted
         uint256 oldAccountBalance = super.balanceOf(user);
-        b[user] = oldAccountBalance.add(amount);
+        b[user] = oldAccountBalance + amount;
 
         return true;
     }
@@ -57,18 +61,18 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
         address receiverOfUnderlying,
         uint256 amount,
         uint256 index
-    ) external override onlyLendingPool {
+    ) external onlyLendingPool {
         require(user != address(0), "attempted to burn funds from address 0");
         // shortcut to save gas
         require(amount != 0, "attempt to burn 0 tokens");
 
         // Updating the total supply
         uint256 oldTotalSupply = super.totalSupply();
-        t = oldTotalSupply.sub(amount);
+        t = oldTotalSupply - amount;
 
         // Updating the balance of user to which to tokens were minted
         uint256 oldAccountBalance = super.balanceOf(user);
-        b[user] = oldAccountBalance.sub(amount);
+        b[user] = oldAccountBalance - amount;
 
         IERC20(UNDERLYING_ASSET_ADDRESS).transfer(receiverOfUnderlying, amount);
     }
@@ -77,7 +81,17 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
      * @dev Returns the scaled total supply of the variable debt token. as a simplification it chosen to be twice the value of total supply
      * @return the scaled total supply
      **/
-    function scaledTotalSupply() public returns (uint256) {
+    function scaledTotalSupply() public view returns (uint256) {
         return (super.totalSupply() * 2);
     }
+
+    /**
+     * @dev Returns the address of the incentives controller contract
+     **/
+    function getIncentivesController()
+        external
+        view
+        returns (IAaveIncentivesController){
+            return INCENTIVES_CONTROLLER;
+        }
 }

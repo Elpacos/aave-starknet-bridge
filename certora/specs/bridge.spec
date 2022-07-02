@@ -58,9 +58,9 @@ methods {
 /************************************************
  *    IATokenWithPool + IScaledBalanceToken     *
  *******************************/
-    UNDERLYING_ASSET_ADDRESS() returns (address) envfree
-    pool() returns (address) envfree 
-    scaledTotalSupply() returns (uint256) envfree
+    TOKEN_A.UNDERLYING_ASSET_ADDRESS() returns (address) envfree => DISPATCHER(true)
+    POOL() returns (address) envfree => DISPATCHER(true)
+    scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
 
 /************************************
  *     IncentivesControllerMock     *
@@ -80,11 +80,11 @@ function setLinkage(address AToken, uint8 underlyingContract){
     // Setting the underlying token of the given AToken as either UNDERLYING_ASSET_A or UNDERLYING_ASSET_B
     if (underlyingContract == 1){
         require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_A;
-        require ATOKEN_A.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_A;
+        // require ATOKEN_A.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_A;
     }
     else{
         require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_B;
-        require ATOKEN_B.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_B;
+        // require ATOKEN_B.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_B;
     }
     require getLendingPoolOfAToken(AToken) == LENDINGPOOL;
 }
