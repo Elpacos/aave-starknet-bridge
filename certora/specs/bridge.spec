@@ -2,13 +2,15 @@ import "erc20.spec"
 
 // Declaring aliases for contracts according to the format:
 // using Target_Contract as Alias_Name
-using DummyERC20UnderlyingA as UNDERLYING_ASSET_A
+using DummyERC20UnderlyingA as UNDERLYING_ASSET_A 
 using DummyERC20UnderlyingB as UNDERLYING_ASSET_B
-using DummyERC20RewardToken as REWARD_TOKEN_C
 using ATokenWithPoolA as ATOKEN_A
 using ATokenWithPoolB as ATOKEN_B
+//
+using DummyERC20RewardToken as REWARD_TOKEN_C
 using SymbolicLendingPool as LENDINGPOOL
-
+//for referencing structs    
+using BridgeHarness as Bridge
 methods {
 /**********************
  *     Bridge.sol     *
@@ -29,6 +31,8 @@ methods {
     _computeRewardsDiff(uint256, uint256, uint256) returns (uint256)
     _consumeBridgeRewardMessage(uint256, address, uint256)
     _transferRewards(address, uint256)
+
+
 
 /*************************
  *     BridgeHarness     *
@@ -60,9 +64,10 @@ methods {
  *******************************/
     mint(address, uint256, uint256) returns (bool) => DISPATCHER(true)
     burn(address,address, uint256, uint256) => DISPATCHER(true)
-    TOKEN_A.UNDERLYING_ASSET_ADDRESS() returns (address) envfree => DISPATCHER(true)
     POOL() returns (address) envfree => DISPATCHER(true)
     scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
+    UNDERLYING_ASSET_ADDRESS() => NONDET // just to remove red warning
+    getIncentivesController() => NONDET
 
 /************************************
  *     IncentivesControllerMock     *
@@ -78,18 +83,33 @@ methods {
 
 // Linkning the instances of ERC20 and LendingPool within the ATokenData struct the corresponding AToken to specific symbolic contract
 // The if-else structure allows setting each AToken with a desired underlying asset and lending pool so that 2 ATokens can be compared.
-function setLinkage(address AToken, uint8 underlyingContract){
+function setLinkage(address AToken){
     // Setting the underlying token of the given AToken as either UNDERLYING_ASSET_A or UNDERLYING_ASSET_B
-    if (underlyingContract == 1){
-        require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_A;
-        // require ATOKEN_A.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_A;
-    }
-    else{
-        require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_B;
-        // require ATOKEN_B.UNDERLYING_ASSET_ADDRESS() == UNDERLYING_ASSET_B;
-    }
+    require getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_A || getUnderlyingAssetOfAToken(AToken) == UNDERLYING_ASSET_B;
     require getLendingPoolOfAToken(AToken) == LENDINGPOOL;
 }
+
+/* integrity of deposit */
+
+function callFunctionWithAtoken(method f, address aToken, uint256 l2Recipient, uint256 amount, method f ) {
+    //TODO 
+}
+
+/* uint test rule */
+
+
+/* parametric rule: when can underlyingToken.balanceOf(u) can change */
+rule balanceOfUnderlyingAssetChanged(method f, address u, address aToken) {
+    env eB;
+    env eF;
+    calldataarg args;
+    setLinkage(aToken);
+    address underlying  = getUnderlyingAssetOfAToken(aToken);
+    uint256 before = tokenBalanceOf(eB, underlying, u);
+    f(eF,args); //todo 
+    assert tokenBalanceOf(eB, underlying, u) == before, "balanceOf changed";
+}
+
 
 rule sanity(method f)
 {
