@@ -8,26 +8,24 @@ import {ILendingPool} from "../../contracts/l1/interfaces/ILendingPool.sol";
 import {IAaveIncentivesController} from "../../contracts/l1/interfaces/IAaveIncentivesController.sol";
 import "./DummyERC20Impl.sol";
 
-
 contract ATokenWithPoolImpl is DummyERC20Impl {
-  
     address public UNDERLYING_ASSET_ADDRESS;
-    ILendingPool public POOL;
+    ILendingPool public POOL_L1;
     IAaveIncentivesController public INCENTIVES_CONTROLLER;
 
     modifier onlyLendingPool() {
-        require(msg.sender == address(POOL));
+        require(msg.sender == address(POOL_L1));
         _;
     }
 
     /**
      * @dev Mints `amount` aTokens to `user`
      * - Only callable by the LendingPool, as extra state updates there need to be managed
-    * @param user The address receiving the minted tokens
-    * @param amount The amount of tokens getting minted
-    * @param index The new liquidity index of the reserve
-    * @return `true` if the the previous balance of the user was 0
-    */
+     * @param user The address receiving the minted tokens
+     * @param amount The amount of tokens getting minted
+     * @param index The new liquidity index of the reserve
+     * @return `true` if the the previous balance of the user was 0
+     */
     function mint(
         address user,
         uint256 amount,
@@ -36,7 +34,7 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
         require(user != address(0), "attempted to mint to the 0 address");
         // shortcut to save gas
         require(amount != 0, "attempt to mint 0 tokens");
-    
+
         // Updating the total supply
         uint256 oldTotalSupply = super.totalSupply();
         t = oldTotalSupply + amount;
@@ -91,7 +89,8 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
     function getIncentivesController()
         external
         view
-        returns (IAaveIncentivesController){
-            return INCENTIVES_CONTROLLER;
-        }
+        returns (IAaveIncentivesController)
+    {
+        return INCENTIVES_CONTROLLER;
+    }
 }

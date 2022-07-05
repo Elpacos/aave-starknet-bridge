@@ -3,12 +3,13 @@ then
     RULE="--rule $1"
 fi
 
-certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20UnderlyingA.sol certora/harness/DummyERC20UnderlyingB.sol certora/harness/DummyERC20RewardToken.sol certora/harness/SymbolicLendingPool.sol certora/harness/IncentivesControllerMock.sol certora/harness/ATokenWithPoolA.sol certora/harness/ATokenWithPoolB.sol \
+certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20UnderlyingA_L1.sol certora/harness/DummyERC20UnderlyingB_L1.sol certora/harness/DummyERC20RewardToken_L1.sol certora/harness/SymbolicLendingPoolL1.sol certora/harness/IncentivesControllerMock_L1.sol certora/harness/ATokenWithPoolA_L1.sol certora/harness/ATokenWithPoolB_L1.sol certora/harness/DummyERC20RewAAVE_L2.sol certora/harness/BridgeL2Harness.sol \
             --verify BridgeHarness:certora/specs/bridge.spec \
-            --link BridgeHarness:_rewardToken=DummyERC20RewardToken BridgeHarness:_incentivesController=IncentivesControllerMock \
-            IncentivesControllerMock:REWARD_TOKEN=DummyERC20RewardToken \
-            ATokenWithPoolA:POOL=SymbolicLendingPool ATokenWithPoolA:INCENTIVES_CONTROLLER=IncentivesControllerMock \
-            ATokenWithPoolB:POOL=SymbolicLendingPool ATokenWithPoolB:INCENTIVES_CONTROLLER=IncentivesControllerMock \
+            --link BridgeHarness:_rewardToken=DummyERC20RewardToken_L1 BridgeHarness:_incentivesController=IncentivesControllerMock_L1 BridgeHarness:BRIDGE_L2=BridgeL2Harness \
+            IncentivesControllerMock_L1:REWARD_TOKEN=DummyERC20RewardToken_L1 \
+            ATokenWithPoolA_L1:POOL_L1=SymbolicLendingPoolL1 ATokenWithPoolA_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
+            ATokenWithPoolB_L1:POOL_L1=SymbolicLendingPoolL1 ATokenWithPoolB_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
+            BridgeL2Harness:IBridge=BridgeHarness BridgeL2Harness:REW_AAVE_L2=DummyERC20RewAAVE_L2 \
             --solc solc8.10 \
             --optimistic_loop \
             --loop_iter 9 \

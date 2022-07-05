@@ -2,4 +2,4 @@
 pragma solidity ^0.8.0;
 import "./DummyERC20Impl.sol";
 
-contract DummyERC20RewardToken is DummyERC20Impl {}
+contract DummyERC20UnderlyingA_L1 is DummyERC20Impl {}

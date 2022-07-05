@@ -3,4 +3,4 @@ pragma solidity 0.8.10;
 
 import {ATokenWithPoolImpl} from "./ATokenWithPoolImpl.sol";
 
-contract ATokenWithPoolA is ATokenWithPoolImpl { }
+contract ATokenWithPoolA_L1 is ATokenWithPoolImpl {}
