@@ -9,7 +9,7 @@ certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20Underlyin
             IncentivesControllerMock_L1:REWARD_TOKEN=DummyERC20RewardToken_L1 \
             ATokenWithPoolA_L1:POOL_L1=SymbolicLendingPoolL1 ATokenWithPoolA_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
             ATokenWithPoolB_L1:POOL_L1=SymbolicLendingPoolL1 ATokenWithPoolB_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
-            BridgeL2Harness:IBridge=BridgeHarness BridgeL2Harness:REW_AAVE_L2=DummyERC20RewAAVE_L2 \
+            BridgeL2Harness:BRIDGE_L1=BridgeHarness BridgeL2Harness:REW_AAVE_L2=DummyERC20RewAAVE_L2 \
             --solc solc8.10 \
             --optimistic_loop \
             --loop_iter 9 \
