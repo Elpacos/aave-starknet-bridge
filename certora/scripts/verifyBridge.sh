@@ -15,7 +15,7 @@ certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20Underlyin
             --loop_iter 9 \
             --staging \
             $RULE \
-            --msg "Bridge $RULE $2" 
+            --msg "Bridge $RULE $2"
 
 # The first line (#6) specifies all the contracts that are being called through the bridge.sol file.
 # This is a declaration of multiple contracts for the verification context.
