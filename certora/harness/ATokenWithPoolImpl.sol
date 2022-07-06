@@ -10,11 +10,11 @@ import "./DummyERC20Impl.sol";
 
 contract ATokenWithPoolImpl is DummyERC20Impl {
     address public UNDERLYING_ASSET_ADDRESS;
-    ILendingPool public POOL_L1;
+    ILendingPool public POOL;
     IAaveIncentivesController public INCENTIVES_CONTROLLER;
 
     modifier onlyLendingPool() {
-        require(msg.sender == address(POOL_L1));
+        require(msg.sender == address(POOL));
         _;
     }
 
