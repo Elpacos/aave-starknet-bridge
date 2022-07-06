@@ -2,13 +2,11 @@ pragma solidity 0.8.10;
 pragma experimental ABIEncoderV2;
 
 import {IERC20_Extended} from "./IERC20_Extended.sol";
-import {IAToken} from "../../contracts/l1/interfaces/IAToken.sol";
 import {IBridge} from "../../contracts/l1/interfaces/IBridge.sol";
 import "./IBridge_L2.sol";
 
 contract BridgeL2Harness is IBridge_L2 {
     mapping(address => address) public AtokenToStaticAToken_L2;
-    uint256 public liquidityIndex = 2; //TODO
     IBridge public BRIDGE_L1;
     uint256 public l2RewardsIndex;
     bool public toUnderlyingAsset;
@@ -34,10 +32,9 @@ contract BridgeL2Harness is IBridge_L2 {
         uint256 amount,
         address onBehalfOf
     ) external {
-        IAToken(AtokenToStaticAToken_L2[asset]).mint(
+        IERC20_Extended(AtokenToStaticAToken_L2[asset]).mint(
             onBehalfOf,
-            amount,
-            liquidityIndex
+            amount
         );
     }
 
@@ -53,12 +50,9 @@ contract BridgeL2Harness is IBridge_L2 {
         uint256 amount,
         address to
     ) external returns (uint256) {
-        //TODO change `to` to be the correct recipient
-        IAToken(AtokenToStaticAToken_L2[asset]).burn(
+        IERC20_Extended(AtokenToStaticAToken_L2[asset]).burn(
             msg.sender,
-            to,
-            amount,
-            liquidityIndex
+            amount
         );
 
         BRIDGE_L1.withdraw(

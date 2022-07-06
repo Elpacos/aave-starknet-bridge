@@ -54,13 +54,13 @@ methods {
  *************************************************/
     mint(address, uint256, uint256) returns (bool) => DISPATCHER(true)
     burn(address,address, uint256, uint256) => DISPATCHER(true)
-    POOL_L1() returns (address) envfree => DISPATCHER(true)
+    POOL() returns (address) envfree => DISPATCHER(true)
     scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
     UNDERLYING_ASSET_ADDRESS() => NONDET // just to remove red warning
     getIncentivesController() => NONDET
 
 /************************************
- *     IncentivesControllerMock_L1     *
+ *     IncentivesControllerMock     *
  ************************************/
     REWARD_TOKEN() returns (address) envfree
     DISTRIBUTION_END() returns (uint256) envfree
@@ -108,6 +108,14 @@ function callFunctionWithParams(method f, env e, address l1AToken, uint256 l2Rec
         f(e, args);
         return 0;
     }
+}
+
+rule sanity(method f)
+{
+	env e;
+	calldataarg args;
+	f(e,args);
+	assert false;
 }
 
 /*
