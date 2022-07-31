@@ -82,7 +82,7 @@ contract BridgeHarness is Bridge {
         uint256 blockNumber,
         uint256 currentRewardsIndex
     ) internal override {
-        //   BRIDGE_L2.deposit(l1Token, amount, address(uint160(l2Recipient)));
+        BRIDGE_L2.deposit(l1Token, amount, address(uint160(l2Recipient)));
     }
 
     // To save the 2 step mechanism, a call to withdraw from the L2 side invokes the withdraw on the L1 side.

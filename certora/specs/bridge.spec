@@ -2,15 +2,28 @@ import "erc20.spec"
 
 // Declaring aliases for contracts according to the format:
 // using Target_Contract as Alias_Name
-using DummyERC20UnderlyingA_L1 as UNDERLYING_ASSET_A 
-using DummyERC20UnderlyingB_L1 as UNDERLYING_ASSET_B
-using ATokenWithPoolA_L1 as ATOKEN_A
-using ATokenWithPoolB_L1 as ATOKEN_B
-using DummyERC20RewardToken_L1 as REWARD_TOKEN
-using SymbolicLendingPoolL1 as LENDINGPOOL_L1
+/************************
+ *     L1 contracts     *
+ ************************/
+    using DummyERC20UnderlyingA_L1 as UNDERLYING_ASSET_A 
+    using DummyERC20UnderlyingB_L1 as UNDERLYING_ASSET_B
+    using ATokenWithPoolA_L1 as ATOKEN_A
+    using ATokenWithPoolB_L1 as ATOKEN_B
+    using DummyERC20RewardToken_L1 as REWARD_TOKEN_L1
+    using SymbolicLendingPoolL1 as LENDINGPOOL_L1
+
+
+/************************
+ *     L2 contracts     *
+ ************************/
+    using BridgeL2Harness as BRIDGE_L2
+    using StaticATokenA_L2 as STATIC_ATOKEN_A
+    using StaticATokenB_L2 as STATIC_ATOKEN_B
+
 // For referencing structs
 using BridgeHarness as Bridge
 
+// Declaring contracts' methods and summarizing them as needed
 methods {
 /**********************
  *     Bridge.sol     *
@@ -35,10 +48,8 @@ methods {
 /******************************
  *     IStarknetMessaging     *
  ******************************/
-    // These methods' return values are never used, and they do not change the bridges state variables.
-    // Therefore havocing is an over-approximation that should not harm verification of Bridge.sol
-    sendMessageToL2(uint256, uint256, uint256[]) returns (bytes32) => NONDET
-    consumeMessageFromL2(uint256, uint256[]) returns (bytes32) => NONDET
+    // The methods of Bridge.sol that call this contract are being overridden to bypass the messaging communication.
+    // Instead, we modeled the L2 side in solidity and made direct calls between the sides.
 
 /************************
  *     ILendingPool     *
@@ -69,6 +80,14 @@ methods {
     // Note that the sender of the funds here is RewardsVault which is arbitrary by default.
     // If any rule that count on the reward token balance, calls this method a `require RewardsVault != to` make sense to add
     claimRewards(address[], uint256, address) returns (uint256)
+
+/***************************
+ *     BridgeL2Harness     *
+ ***************************/
+    l2RewardsIndexSetter(uint256)
+    deposit(address, uint256, address) envfree
+    initiateWithdraw(address, uint256, address) returns (uint256)
+    bridgeRewards(address, uint256) 
 }
 
 // Linkning the instances of ERC20 and LendingPool within the ATokenData struct to the corresponding symbolic contracts
@@ -110,14 +129,6 @@ function callFunctionWithParams(method f, env e, address l1AToken, uint256 l2Rec
     }
 }
 
-rule sanity(method f)
-{
-	env e;
-	calldataarg args;
-	f(e,args);
-	assert false;
-}
-
 /*
     @Rule
 
@@ -152,22 +163,21 @@ rule integrityOfWithdraw(method f, address recipient, address aToken){
     address underlying = getUnderlyingAssetOfAToken(aToken);
     uint256 underlyingBalanceBefore = tokenBalanceOf(e, underlying, recipient);
     uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
-    uint256 rewardTokenBalanceBefore = tokenBalanceOf(e, REWARD_TOKEN, recipient);
+    uint256 rewardTokenBalanceBefore = tokenBalanceOf(e, REWARD_TOKEN_L1, recipient);
 
     withdraw(e, aToken, l2sender, recipient, staticAmount, l2RewardsIndex, toUnderlyingAsset);
 
     uint256 underlyingBalanceAfter = tokenBalanceOf(e, underlying, recipient);
     uint256 aTokenBalanceAfter = tokenBalanceOf(e, aToken, recipient);
-    uint256 rewardTokenBalanceAfter = tokenBalanceOf(e, REWARD_TOKEN, recipient);
+    uint256 rewardTokenBalanceAfter = tokenBalanceOf(e, REWARD_TOKEN_L1, recipient);
 
     if (toUnderlyingAsset){
-        assert underlyingBalanceAfter == underlyingBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
+        assert underlyingBalanceAfter <= underlyingBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
     }
     else {
-        assert aTokenBalanceAfter == aTokenBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
+        assert aTokenBalanceAfter <= aTokenBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
     }
-    assert true;
-    // assert rewardTokenBalanceAfter == rewardTokenBalanceBefore + _computeRewardsDiff_Wrapper(staticAmount, l2RewardsIndex, _getCurrentRewardsIndex_Wrapper(e, aToken));
+    assert rewardTokenBalanceAfter <= rewardTokenBalanceBefore + _computeRewardsDiff_Wrapper(staticAmount, l2RewardsIndex, _getCurrentRewardsIndex_Wrapper(e, aToken));
 }
 
 /*
@@ -204,13 +214,8 @@ rule balanceOfUnderlyingAssetChanged(method f, address u, address aToken) {
     address aToken2; uint256 l2Recipient; address recipient; uint256 amount;
 
     callFunctionWithParams(f, eF, aToken2, l2Recipient, recipient, amount);
-    // f(eF, args);
 
     uint256 underlyingBalanceAfter = tokenBalanceOf(eB, underlying, u);
-    assert (underlyingBalanceAfter == underlyingBalanceBefore
-            => f.selector != deposit(address, uint256, uint256, uint16, bool).selector 
-            || f.selector != withdraw(address, uint256, address, uint256, uint256, bool).selector), "balanceOf changed";
-    assert (f.selector != deposit(address, uint256, uint256, uint16, bool).selector 
-            && f.selector != withdraw(address, uint256, address, uint256, uint256, bool).selector 
-            => underlyingBalanceAfter == underlyingBalanceBefore), "balanceOf due to unauthorized method";
+    assert (underlyingBalanceAfter != underlyingBalanceBefore
+            <=> ((f.selector == deposit().selector) || (f.selector == initiateWithdraw().selector))), "balanceOf changed";
 }
