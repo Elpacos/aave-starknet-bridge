@@ -1,21 +1,23 @@
-if [[ "$1" ]]
-then
-    RULE="--rule $1"
-fi
-
-certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20UnderlyingA_L1.sol certora/harness/DummyERC20UnderlyingB_L1.sol certora/harness/DummyERC20RewardToken_L1.sol certora/harness/SymbolicLendingPoolL1.sol certora/harness/IncentivesControllerMock_L1.sol certora/harness/ATokenWithPoolA_L1.sol certora/harness/ATokenWithPoolB_L1.sol certora/harness/StaticATokenA_L2.sol certora/harness/StaticATokenB_L2.sol certora/harness/DummyERC20RewAAVE_L2.sol certora/harness/BridgeL2Harness.sol \
+certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20UnderlyingA_L1.sol certora/harness/DummyERC20UnderlyingB_L1.sol certora/harness/DummyERC20RewardToken.sol certora/harness/SymbolicLendingPoolL1.sol certora/harness/IncentivesControllerMock_L1.sol certora/harness/ATokenWithPoolA_L1.sol certora/harness/ATokenWithPoolB_L1.sol certora/harness/StaticATokenA_L2.sol certora/harness/StaticATokenB_L2.sol certora/harness/BridgeL2Harness.sol \
             --verify BridgeHarness:certora/specs/bridge.spec \
-            --link BridgeHarness:_rewardToken=DummyERC20RewardToken_L1 BridgeHarness:_incentivesController=IncentivesControllerMock_L1 BridgeHarness:BRIDGE_L2=BridgeL2Harness \
-            IncentivesControllerMock_L1:REWARD_TOKEN=DummyERC20RewardToken_L1 \
-            ATokenWithPoolA_L1:POOL=SymbolicLendingPoolL1 ATokenWithPoolA_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
-            ATokenWithPoolB_L1:POOL=SymbolicLendingPoolL1 ATokenWithPoolB_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
-            BridgeL2Harness:BRIDGE_L1=BridgeHarness BridgeL2Harness:REW_AAVE_L2=DummyERC20RewAAVE_L2 \
+            --link  BridgeHarness:_rewardToken=DummyERC20RewardToken \
+                    BridgeHarness:_incentivesController=IncentivesControllerMock_L1 \
+                    BridgeHarness:BRIDGE_L2=BridgeL2Harness \
+                    IncentivesControllerMock_L1:_rewardToken=DummyERC20RewardToken \
+                    ATokenWithPoolA_L1:POOL=SymbolicLendingPoolL1 \
+                    ATokenWithPoolA_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
+                    ATokenWithPoolB_L1:POOL=SymbolicLendingPoolL1 \
+                    ATokenWithPoolB_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
+                    BridgeL2Harness:BRIDGE_L1=BridgeHarness \
+                    BridgeL2Harness:REW_AAVE=DummyERC20RewardToken \
             --solc solc8.10 \
             --optimistic_loop \
             --loop_iter 9 \
+            --send_only \
+            --rule_sanity basic \
             --staging \
-            $RULE \
-            --msg "Bridge $RULE $2"
+            --rule depositWithdrawReversed \
+            --msg "Bridge depositWithdrawReversed"
 
 # The first line (#6) specifies all the contracts that are being called through the bridge.sol file.
 # This is a declaration of multiple contracts for the verification context.

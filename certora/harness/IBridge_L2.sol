@@ -13,8 +13,13 @@ interface IBridge_L2 {
     function initiateWithdraw(
         address asset,
         uint256 amount,
+        address caller,
         address to
     ) external returns (uint256);
 
-    function bridgeRewards(address recipient, uint256 amount) external;
+    function getRewTokenAddress() external view returns(address);
+
+    function bridgeRewards(address recipient, address caller, uint256 amount) external;
+
+    function mintRewards(address recipient, uint256 amount) external;
 }

@@ -6,7 +6,7 @@ import {IAToken} from "../../contracts/l1/interfaces/IAToken.sol";
 
 contract SymbolicLendingPoolL1 {
     mapping(address => address) public underlyingAssetToAToken_L1;
-    uint256 public liquidityIndex = 2; //TODO
+    uint256 public liquidityIndex; 
 
     /**
      * @dev Deposits underlying token in the Atoken's contract on behalf of the user,
@@ -58,7 +58,7 @@ contract SymbolicLendingPoolL1 {
     /**
      * @dev A simplification returning a constant
      * @param asset The underlying asset to which the Atoken is connected
-     * @return The `liquidityIndex`
+     * @return liquidityIndex the `liquidityIndex`
      **/
     function getReserveNormalizedIncome(address asset)
         external
@@ -67,5 +67,10 @@ contract SymbolicLendingPoolL1 {
         returns (uint256)
     {
         return liquidityIndex;
+    }
+
+    function underlyingtoAToken(address asset) external view
+    returns(address){
+        return underlyingAssetToAToken_L1[asset];
     }
 }

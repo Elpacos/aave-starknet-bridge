@@ -2,13 +2,20 @@
 pragma solidity ^0.8.0;
 
 import "./DummyERC20Impl.sol";
+import "./DummyERC20RewardToken.sol";
+import "./IStaticAToken.sol";
+import "./IBridge_L2.sol";
 
-contract DummyERC20ExtendedImpl is DummyERC20Impl {
-
+contract DummyStaticATokenImpl is DummyERC20Impl {
+    IBridge_L2 internal _L2Bridge;
     address internal _owner;
+    mapping(address => uint256) internal unclaimedRewards;
 
-    constructor(address owner_){
-        _owner = owner_;
+    constructor(
+        address Owner, 
+        IBridge_L2 L2Bridge) {
+        _owner = Owner;
+        _L2Bridge = L2Bridge;
     }
 
     modifier onlyOwner()
@@ -19,6 +26,14 @@ contract DummyERC20ExtendedImpl is DummyERC20Impl {
 
     function owner() public view returns (address) {
         return _owner;
+    }
+
+    function claimRewards(address caller) external {
+        address _rewAAVE = _L2Bridge.getRewTokenAddress();
+        require(_rewAAVE != address(0), "Invalid rewards token");
+        uint256 amount = unclaimedRewards[caller];
+        unclaimedRewards[caller] = 0;
+        _L2Bridge.mintRewards(msg.sender, amount);
     }
 
     /**

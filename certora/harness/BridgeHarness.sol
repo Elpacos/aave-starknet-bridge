@@ -3,6 +3,7 @@ pragma solidity 0.8.10;
 
 import "../../contracts/l1/Bridge.sol";
 import {IBridge_L2} from "./IBridge_L2.sol";
+import {SymbolicLendingPoolL1} from "./SymbolicLendingPoolL1.sol";
 
 contract BridgeHarness is Bridge {
     IBridge_L2 public BRIDGE_L2;
@@ -13,16 +14,25 @@ contract BridgeHarness is Bridge {
 
     // Retrieving the UnderlyingAsset of the AToken
     function getUnderlyingAssetOfAToken(address AToken)
-        public
-        returns (IERC20 underlyingAsset)
-    {
+    public view returns (IERC20 underlyingAsset) {
         return _aTokenData[AToken].underlyingAsset;
+    }
+    
+     /**
+     * @dev Retrieving the AToken address of an underlying asset
+     * @param LendPool Lendingpool to search the AToken for.
+     * @param asset The underlying asset to which the Atoken is connected
+     * @return Atoken the `atoken` address
+     **/
+    function getATokenOfUnderlyingAsset(SymbolicLendingPoolL1 LendPool, address asset)
+    public view returns (address)
+    {
+        return LendPool.underlyingtoAToken(asset);
     }
 
     // Retrieving the LendingPool of the AToken
     function getLendingPoolOfAToken(address AToken)
-        public
-        returns (ILendingPool lendingPool)
+    public view returns (ILendingPool lendingPool)
     {
         return _aTokenData[AToken].lendingPool;
     }
@@ -40,6 +50,15 @@ contract BridgeHarness is Bridge {
      *       Wrappers       *
      ************************/
     /* Wrapper functions allow calling internal functions from within the spec */
+
+    // A wrapper function for _dynamicToStaticAmount
+    function _dynamicToStaticAmount_Wrapper(
+        uint256 amount,
+        address asset,
+        ILendingPool lendingPool
+    ) external view returns (uint256) {
+        return super._dynamicToStaticAmount(amount, asset, lendingPool);
+    }
 
     // A wrapper function for _staticToDynamicAmount
     function _staticToDynamicAmount_Wrapper(
@@ -112,4 +131,19 @@ contract BridgeHarness is Bridge {
         address recipient,
         uint256 amount
     ) internal override {}
+
+    // =============== L2 interface ========================================
+    // Called from this contract ===========================================
+
+    function initiateWithdraw_L2(
+        address asset,
+        uint256 amount,
+        address to
+    ) external returns (uint256) {
+        return BRIDGE_L2.initiateWithdraw(asset, amount, msg.sender, to);
+    }
+
+    function bridgeRewards_L2(address recipient, uint256 amount) external {
+        BRIDGE_L2.bridgeRewards(recipient, msg.sender, amount);
+    }
 }

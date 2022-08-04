@@ -2,11 +2,12 @@ pragma solidity 0.8.10;
 pragma experimental ABIEncoderV2;
 
 import {IERC20} from "@aave/core-v3/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
+import {Bridge} from "../../contracts/l1/Bridge.sol";
 
 contract IncentivesControllerMock_L1 {
-    address public REWARD_TOKEN;
     uint256 public DISTRIBUTION_END;
-    address public REW_AAVE_L1;
+    address public L1_Bridge;
+    IERC20 public _rewardToken;
     mapping(address => assetData) public Asset_Data;
 
     struct assetData {
@@ -47,7 +48,9 @@ contract IncentivesControllerMock_L1 {
         uint256 amount,
         address to
     ) external returns (uint256) {
-        IERC20(REWARD_TOKEN).transferFrom(REW_AAVE_L1, to, amount);
+        require (msg.sender == L1_Bridge,
+             "only the L1 bridge interacts with the controller");
+        _rewardToken.transfer(to, amount);
         return amount;
     }
 }

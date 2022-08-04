@@ -76,11 +76,11 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
     }
 
     /**
-     * @dev Returns the scaled total supply of the variable debt token. as a simplification it chosen to be twice the value of total supply
+     * @dev Returns the scaled total supply of the variable debt token.
      * @return the scaled total supply
      **/
     function scaledTotalSupply() public view returns (uint256) {
-        return (super.totalSupply() * 2);
+        return super.totalSupply();
     }
 
     /**

@@ -10,6 +10,11 @@ contract DummyERC20Impl {
     string public symbol;
     uint256 public decimals;
 
+    constructor(){
+        name = "dummy";
+        symbol = "DUM";
+    }
+
     function myAddress() public returns (address) {
         return address(this);
     }
