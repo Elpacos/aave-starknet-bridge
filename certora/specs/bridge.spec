@@ -1,7 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////
 //                       Imports and multi-contracts                      //
 ////////////////////////////////////////////////////////////////////////////
-
 import "erc20.spec"
 
 // Declaring aliases for contracts according to the format:
@@ -15,7 +14,6 @@ import "erc20.spec"
     using ATokenWithPoolB_L1 as ATOKEN_B
     using DummyERC20RewardToken as REWARD_TOKEN
     using SymbolicLendingPoolL1 as LENDINGPOOL_L1
-
 
 /************************
  *     L2 contracts     *
@@ -83,7 +81,7 @@ methods {
     burn(address, uint256) returns (bool) => DISPATCHER(true)
     POOL() returns (address) envfree => DISPATCHER(true)
     scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
-    UNDERLYING_ASSET_ADDRESS() => NONDET // just to remove red warning -> Causes violations
+    UNDERLYING_ASSET_ADDRESS() => DISPATCHER(true) 
     getIncentivesController() => NONDET
 
 /************************************
@@ -95,21 +93,21 @@ methods {
     getAssetData(address) returns (uint256, uint256, uint256) envfree => DISPATCHER(true)
     // Note that the sender of the funds here is RewardsVault which is arbitrary by default.
     // If any rule that count on the reward token balance, calls this method a `require RewardsVault != to` make sense to add
-    claimRewards(address[], uint256, address) returns (uint256)
+    claimRewards(address[], uint256, address) returns (uint256) => DISPATCHER(true)
     
 /***************************
  *     BridgeL2Harness     *
  ***************************/
     BRIDGE_L2.l2RewardsIndexSetter(uint256)
     BRIDGE_L2.deposit(address, uint256, address) envfree
-    BRIDGE_L2.initiateWithdraw(address, uint256, address) returns (uint256)
-    BRIDGE_L2.bridgeRewards(address, uint256)
+    BRIDGE_L2.initiateWithdraw(address, uint256, address, address) returns (uint256)
+    BRIDGE_L2.bridgeRewards(address, uint256, uint256)
     BRIDGE_L2.l2RewardsIndex() returns (uint256) envfree
     BRIDGE_L2.getStaticATokenAddress(address) returns (address) envfree
 
-/***************************
+/******************
  *     Tokens     *
- ***************************/
+ ******************/
     ATOKEN_A.getUnderlyingAsset() returns (address) envfree
     ATOKEN_B.getUnderlyingAsset() returns (address) envfree  
 }
@@ -119,6 +117,10 @@ methods {
 ////////////////////////////////////////////////////////////////////////////
 
 definition RAY() returns uint256 = 10^27;
+
+definition excludeInitialize(method f) returns bool =
+    f.selector != 
+    initialize(uint256, address, address, address[], uint256[]).selector; 
 
 ////////////////////////////////////////////////////////////////////////////
 //                       Rules                                            //
@@ -160,7 +162,6 @@ rule integrityOfWithdraw(method f, address recipient, address aToken){
     requireValidTokens(underlying, aToken, STATIC_ATOKEN_A);
     requireInvariant ATokenAssetPair(underlying, aToken);
     require underlying != REWARD_TOKEN;
-    require aToken != REWARD_TOKEN;
     uint256 underlyingBalanceBefore = tokenBalanceOf(e, underlying, recipient);
     uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
     uint256 rewardTokenBalanceBefore = tokenBalanceOf(e, REWARD_TOKEN, recipient);
@@ -224,7 +225,6 @@ rule balanceOfUnderlyingAssetChanged(method f, address u, address aToken) {
              (f.selector == initiateWithdraw_L2(address, uint256, address).selector))), "balanceOf changed";
 }
 
-
 rule whoChangedStaticTokenBalance(address user, method f)
 {
     env e;
@@ -237,19 +237,10 @@ rule whoChangedStaticTokenBalance(address user, method f)
      "function ${f} changed the static token balance"; 
 }
 
-invariant ATokenAssetPair(address asset, address AToken)
-    getUnderlyingAssetOfAToken(AToken) == asset 
-    <=>
-    getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken
-    
-    {
-        preserved{
-            require asset !=0 && AToken !=0;
-        }
-     }
-
 // Rule violation, check required:
 // https://vaas-stg.certora.com/output/41958/61bcbac9d2ea9016913c/?anonymousKey=2477f0370cec5c5c3eb7aaa9b536d0f6b4ad567b
+// Also:
+// https://vaas-stg.certora.com/output/41958/e629612b0f6e8fbdcf98/?anonymousKey=4aebfa2cd0f5f1ff74554f3c0e2b160bcfc75487
 rule depositWithdrawReversed(uint256 amount)
 {
     env eB; env eF;
@@ -294,17 +285,49 @@ rule dynamicToStaticInversible(uint256 amount)
     assert amount == stat;
 }
 
+// Check consistency of 'asset' being registered as the underlying
+// token of 'AToken', both in the AToken contract, and also in the 
+// mapping _aTokenData.
 invariant underlying2ATokenConsistency(address AToken, address asset)
-     getUnderlyingAssetOfAToken(AToken) == asset 
+     (asset !=0 <=> AToken !=0) 
+     =>
+     (getUnderlyingAssetOfAToken(AToken) == asset 
      <=>
-     getUnderlyingAssetHelper(AToken) == asset
-     
-     {
-        preserved{
-            require asset !=0 && AToken !=0;
-        }
-     }
+     getUnderlyingAssetHelper(AToken) == asset)
+     filtered{f-> excludeInitialize(f)}
 
+// Check consistency of 'asset' being registered as the underlying
+// token of 'AToken', and 'AToken' connected to 'asset' in the lending pool.
+invariant ATokenAssetPair(address asset, address AToken)
+    (asset !=0 <=> AToken !=0) 
+    =>
+    (getUnderlyingAssetOfAToken(AToken) == asset 
+    <=>
+    getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken)
+    filtered{f-> excludeInitialize(f)}
+
+rule initializeIntegrity(address AToken, address asset)
+{
+    env e;
+    calldataarg args;
+
+    // Post-constructor conditions
+    require getUnderlyingAssetOfAToken(AToken) == 0;
+    require getUnderlyingAssetHelper(AToken) == 0;
+    require getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == 0;
+    
+    initialize(e, args);
+
+    assert (asset !=0 && AToken !=0) => (
+        (getUnderlyingAssetOfAToken(AToken) == asset 
+        <=>
+        getUnderlyingAssetHelper(AToken) == asset)
+     &&
+        (getUnderlyingAssetOfAToken(AToken) == asset 
+        <=>
+        getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken));
+}
+    
 
 ////////////////////////////////////////////////////////////////////////////
 //                       Functions                                        //
@@ -378,6 +401,7 @@ function requireValidUser(address user){
 
 // Helper function that allows to call an arbirary function with explicit values (you can move parameters from the body of the function to the args line)
 // returns the return value of the called method, or 0 in case of methods that doesnt return anything
+// @dev Fixes are advised.
 function callFunctionWithParams(method f, env e, address l1AToken, uint256 l2Recipient, address recipient, uint256 amount) returns uint256{
         address messagingContract; address incentivesController; uint16 referralCode; uint256 l2Bridge;
         bool fromUnderlyingAsset; bool toUnderlyingAsset;  uint256 l2RewardsIndex;
