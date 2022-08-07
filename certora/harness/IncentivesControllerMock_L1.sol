@@ -53,4 +53,8 @@ contract IncentivesControllerMock_L1 {
         _rewardToken.transfer(to, amount);
         return amount;
     }
+
+    function REWARD_TOKEN() external view returns (IERC20){
+        return _rewardToken;
+    }
 }

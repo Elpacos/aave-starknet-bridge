@@ -83,7 +83,7 @@ methods {
     burn(address, uint256) returns (bool) => DISPATCHER(true)
     POOL() returns (address) envfree => DISPATCHER(true)
     scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
-    UNDERLYING_ASSET_ADDRESS() => NONDET // just to remove red warning
+    UNDERLYING_ASSET_ADDRESS() => NONDET // just to remove red warning -> Causes violations
     getIncentivesController() => NONDET
 
 /************************************
@@ -96,7 +96,7 @@ methods {
     // Note that the sender of the funds here is RewardsVault which is arbitrary by default.
     // If any rule that count on the reward token balance, calls this method a `require RewardsVault != to` make sense to add
     claimRewards(address[], uint256, address) returns (uint256)
-
+    
 /***************************
  *     BridgeL2Harness     *
  ***************************/
@@ -106,6 +106,12 @@ methods {
     BRIDGE_L2.bridgeRewards(address, uint256)
     BRIDGE_L2.l2RewardsIndex() returns (uint256) envfree
     BRIDGE_L2.getStaticATokenAddress(address) returns (address) envfree
+
+/***************************
+ *     Tokens     *
+ ***************************/
+    ATOKEN_A.getUnderlyingAsset() returns (address) envfree
+    ATOKEN_B.getUnderlyingAsset() returns (address) envfree  
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -149,11 +155,17 @@ rule integrityOfWithdraw(method f, address recipient, address aToken){
     uint256 staticAmount; uint256 l2RewardsIndex;
     env e; calldataarg args;
     address underlying;
+    address static;
     setLinkage(underlying, aToken, STATIC_ATOKEN_A);
+    requireValidTokens(underlying, aToken, STATIC_ATOKEN_A);
+    requireInvariant ATokenAssetPair(underlying, aToken);
+    require underlying != REWARD_TOKEN;
+    require aToken != REWARD_TOKEN;
     uint256 underlyingBalanceBefore = tokenBalanceOf(e, underlying, recipient);
     uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
     uint256 rewardTokenBalanceBefore = tokenBalanceOf(e, REWARD_TOKEN, recipient);
 
+    // Do we call withdraw or initiateWithdraw_L2 ?
     withdraw(e, aToken, l2sender, recipient, staticAmount, l2RewardsIndex, toUnderlyingAsset);
 
     uint256 underlyingBalanceAfter = tokenBalanceOf(e, underlying, recipient);
@@ -192,7 +204,7 @@ rule integrityOfWithdraw(method f, address recipient, address aToken){
     @Link:
 */
 
-/*
+
 rule balanceOfUnderlyingAssetChanged(method f, address u, address aToken) {
     env eB;
     env eF;
@@ -208,10 +220,10 @@ rule balanceOfUnderlyingAssetChanged(method f, address u, address aToken) {
 
     uint256 underlyingBalanceAfter = tokenBalanceOf(eB, underlying, u);
     assert (underlyingBalanceAfter != underlyingBalanceBefore
-            <=> ((f.selector == deposit(address, uint256, address).selector) ||
+            <=> ((f.selector == deposit(address, uint256, uint256, uint16, bool).selector) ||
              (f.selector == initiateWithdraw_L2(address, uint256, address).selector))), "balanceOf changed";
 }
-*/
+
 
 rule whoChangedStaticTokenBalance(address user, method f)
 {
@@ -229,11 +241,12 @@ invariant ATokenAssetPair(address asset, address AToken)
     getUnderlyingAssetOfAToken(AToken) == asset 
     <=>
     getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken
+    
     {
         preserved{
-            require (asset !=0 && AToken !=0);
+            require asset !=0 && AToken !=0;
         }
-    }
+     }
 
 // Rule violation, check required:
 // https://vaas-stg.certora.com/output/41958/61bcbac9d2ea9016913c/?anonymousKey=2477f0370cec5c5c3eb7aaa9b536d0f6b4ad567b
@@ -270,7 +283,7 @@ rule depositWithdrawReversed(uint256 amount)
         (balanceA1 == balanceA3 && balanceU1 == balanceU3);
 }
 
-// Checks that the transitions between static to dyanmic are inverses.
+// Checks that the transitions between static to dynamic are inverses.
 rule dynamicToStaticInversible(uint256 amount)
 {
     // We assume both indexes (L1,L2) are represented in Ray (1e27).
@@ -280,6 +293,18 @@ rule dynamicToStaticInversible(uint256 amount)
     uint256 stat = _dynamicToStaticAmount_Wrapper(dynm, asset, LENDINGPOOL_L1);
     assert amount == stat;
 }
+
+invariant underlying2ATokenConsistency(address AToken, address asset)
+     getUnderlyingAssetOfAToken(AToken) == asset 
+     <=>
+     getUnderlyingAssetHelper(AToken) == asset
+     
+     {
+        preserved{
+            require asset !=0 && AToken !=0;
+        }
+     }
+
 
 ////////////////////////////////////////////////////////////////////////////
 //                       Functions                                        //
@@ -303,6 +328,26 @@ function setLinkage(
     require getUnderlyingAssetOfAToken(AToken) == asset;
     require getLendingPoolOfAToken(AToken) == LENDINGPOOL_L1;
     require BRIDGE_L2.getStaticATokenAddress(AToken) == static;
+    setUnderlyingAToken(AToken, asset);
+}
+
+function setUnderlyingAToken(address AToken, address asset) {
+    if (AToken == ATOKEN_A) {
+        require ATOKEN_A.getUnderlyingAsset() == asset;
+    }
+    else if (AToken == ATOKEN_B) {
+        require ATOKEN_B.getUnderlyingAsset() == asset;
+    }
+}
+
+function getUnderlyingAssetHelper(address AToken) returns address {
+    if (AToken == ATOKEN_A) {
+        return ATOKEN_A.getUnderlyingAsset();
+    }
+    else if (AToken == ATOKEN_B) {
+        return ATOKEN_B.getUnderlyingAsset();
+    }
+    return 0;
 }
 
 // Require the token trio (asset, Atoken, StaticAToken) to have

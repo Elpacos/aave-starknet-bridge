@@ -93,4 +93,15 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
     {
         return INCENTIVES_CONTROLLER;
     }
+
+    /**
+     * @dev returns the underlying asset address
+     **/
+     function getUnderlyingAsset()
+        external
+        view
+        returns (address)
+    {
+        return UNDERLYING_ASSET_ADDRESS;
+    }
 }

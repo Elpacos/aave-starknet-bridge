@@ -16,8 +16,8 @@ certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20Underlyin
             --send_only \
             --rule_sanity basic \
             --staging \
-            --rule depositWithdrawReversed \
-            --msg "Bridge depositWithdrawReversed"
+            --rule integrityOfWithdraw \
+            --msg "StarkNet Bridge integrityOfWithdraw"
 
 # The first line (#6) specifies all the contracts that are being called through the bridge.sol file.
 # This is a declaration of multiple contracts for the verification context.
