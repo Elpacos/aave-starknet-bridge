@@ -69,6 +69,7 @@ contract SymbolicLendingPoolL1 {
         return liquidityIndex;
     }
 
+    // Returns the Atoken address of an underlying asset.
     function underlyingtoAToken(address asset) external view
     returns(address){
         return underlyingAssetToAToken_L1[asset];

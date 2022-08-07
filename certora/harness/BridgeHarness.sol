@@ -4,6 +4,7 @@ pragma solidity 0.8.10;
 import "../../contracts/l1/Bridge.sol";
 import {IBridge_L2} from "./IBridge_L2.sol";
 import {SymbolicLendingPoolL1} from "./SymbolicLendingPoolL1.sol";
+import {IStaticAToken} from "./IStaticAToken.sol";
 
 contract BridgeHarness is Bridge {
     IBridge_L2 public BRIDGE_L2;
@@ -114,7 +115,7 @@ contract BridgeHarness is Bridge {
         uint256 l2RewardsIndex
     ) internal override {}
 
-    // A L1-L2 RewardIndex sync. A call from L1 sync the value on L2
+    // A L1-L2 RewardIndex sync. A call from L1 syncs the value with L2.
     function _sendIndexUpdateMessage(
         address l1Token,
         address from,
@@ -138,12 +139,17 @@ contract BridgeHarness is Bridge {
     function initiateWithdraw_L2(
         address asset,
         uint256 amount,
-        address to
+        address to,
+        bool toUnderlyingAsset
     ) external returns (uint256) {
-        return BRIDGE_L2.initiateWithdraw(asset, amount, msg.sender, to);
+        return BRIDGE_L2.initiateWithdraw(asset, amount, msg.sender, to, toUnderlyingAsset);
     }
 
     function bridgeRewards_L2(address recipient, uint256 amount) external {
         BRIDGE_L2.bridgeRewards(recipient, msg.sender, amount);
     }
+
+    function claimRewardsStatic_L2(address staticAToken) external {
+        BRIDGE_L2.claimRewards(msg.sender, staticAToken);
+    }    
 }

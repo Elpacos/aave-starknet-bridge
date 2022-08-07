@@ -14,12 +14,13 @@ interface IBridge_L2 {
         address asset,
         uint256 amount,
         address caller,
-        address to
+        address to,
+        bool toUnderlyingAsset
     ) external returns (uint256);
 
     function getRewTokenAddress() external view returns(address);
 
     function bridgeRewards(address recipient, address caller, uint256 amount) external;
 
-    function mintRewards(address recipient, uint256 amount) external;
+    function claimRewards(address recipient, address staticAToken) external;
 }

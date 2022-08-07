@@ -6,45 +6,16 @@ import {IATokenWithPool} from "../../contracts/l1/interfaces/IATokenWithPool.sol
 import {IERC20} from "@aave/core-v3/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
 import {ILendingPool} from "../../contracts/l1/interfaces/ILendingPool.sol";
 import {IAaveIncentivesController} from "../../contracts/l1/interfaces/IAaveIncentivesController.sol";
-import "./DummyERC20Impl.sol";
+import "./DummyERC20ExtendedImpl.sol";
 
-contract ATokenWithPoolImpl is DummyERC20Impl {
+contract ATokenWithPoolImpl is DummyERC20ExtendedImpl {
     address public UNDERLYING_ASSET_ADDRESS;
     ILendingPool public POOL;
     IAaveIncentivesController public INCENTIVES_CONTROLLER;
 
-    modifier onlyLendingPool() {
-        require(msg.sender == address(POOL));
-        _;
-    }
-
-    /**
-     * @dev Mints `amount` aTokens to `user`
-     * - Only callable by the LendingPool, as extra state updates there need to be managed
-     * @param user The address receiving the minted tokens
-     * @param amount The amount of tokens getting minted
-     * @param index The new liquidity index of the reserve
-     * @return `true` if the the previous balance of the user was 0
-     */
-    function mint(
-        address user,
-        uint256 amount,
-        uint256 index
-    ) external onlyLendingPool returns (bool) {
-        require(user != address(0), "attempted to mint to the 0 address");
-        // shortcut to save gas
-        require(amount != 0, "attempt to mint 0 tokens");
-
-        // Updating the total supply
-        uint256 oldTotalSupply = super.totalSupply();
-        t = oldTotalSupply + amount;
-
-        // Updating the balance of user to which to tokens were minted
-        uint256 oldAccountBalance = super.balanceOf(user);
-        b[user] = oldAccountBalance + amount;
-
-        return true;
-    }
+    constructor(ILendingPool _POOL, address owner_)
+        DummyERC20ExtendedImpl(owner_)
+        {require(address(_POOL) == owner_, "wrong owner");}
 
     /**
      * @dev Burns aTokens from `user` and sends the equivalent amount of underlying to `receiverOfUnderlying`
@@ -59,20 +30,24 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
         address receiverOfUnderlying,
         uint256 amount,
         uint256 index
-    ) external onlyLendingPool {
-        require(user != address(0), "attempted to burn funds from address 0");
-        // shortcut to save gas
-        require(amount != 0, "attempt to burn 0 tokens");
-
-        // Updating the total supply
-        uint256 oldTotalSupply = super.totalSupply();
-        t = oldTotalSupply - amount;
-
-        // Updating the balance of user to which to tokens were minted
-        uint256 oldAccountBalance = super.balanceOf(user);
-        b[user] = oldAccountBalance - amount;
-
+    ) external onlyOwner {
+        super.burn(user, amount);
         IERC20(UNDERLYING_ASSET_ADDRESS).transfer(receiverOfUnderlying, amount);
+    }
+
+    /**
+     * @dev Mints aTokens to `user` and sends the equivalent amount of underlying to `receiverOfUnderlying`
+     * - Only callable by the LendingPool, as extra state updates there need to be managed
+     * @param user The owner of the aTokens, getting them burned
+     * @param amount The amount being burned
+     * @param index The new liquidity index of the reserve
+     **/
+    function mint(
+        address user, 
+        uint256 amount,
+        uint256 index       
+    ) external onlyOwner {
+        super.mint(user, amount);
     }
 
     /**
@@ -104,4 +79,5 @@ contract ATokenWithPoolImpl is DummyERC20Impl {
     {
         return UNDERLYING_ASSET_ADDRESS;
     }
+
 }

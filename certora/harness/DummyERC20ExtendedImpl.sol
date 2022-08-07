@@ -27,7 +27,7 @@ contract DummyERC20ExtendedImpl is DummyERC20Impl {
      * @param amount The amount of tokens getting minted
      * @return `true` if the entire action executed successfully
      */
-    function mint(address user, uint256 amount) external onlyOwner returns (bool) {
+    function mint(address user, uint256 amount) public onlyOwner returns (bool) {
         require(user != address(0), "attempted to mint to the 0 address");
         // shortcut to save gas
         require(amount != 0, "attempt to mint 0 tokens");
@@ -48,7 +48,7 @@ contract DummyERC20ExtendedImpl is DummyERC20Impl {
      * @param user The owner of the tokens, getting them burned
      * @param amount The amount being burned
      **/
-    function burn(address user, uint256 amount) external onlyOwner {
+    function burn(address user, uint256 amount) public onlyOwner {
         require(user != address(0), "attempted to burn funds from address 0");
         // shortcut to save gas
         require(amount != 0, "attempt to burn 0 tokens");
