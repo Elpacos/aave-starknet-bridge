@@ -1,6 +1,17 @@
-certoraRun certora/harness/BridgeHarness.sol certora/harness/DummyERC20UnderlyingA_L1.sol certora/harness/DummyERC20UnderlyingB_L1.sol certora/harness/DummyERC20RewardToken.sol certora/harness/SymbolicLendingPoolL1.sol certora/harness/IncentivesControllerMock_L1.sol certora/harness/ATokenWithPoolA_L1.sol certora/harness/ATokenWithPoolB_L1.sol certora/harness/StaticATokenA_L2.sol certora/harness/StaticATokenB_L2.sol certora/harness/BridgeL2Harness.sol \
-            --verify BridgeHarness:certora/specs/bridge.spec \
-            --link  BridgeHarness:_rewardToken=DummyERC20RewardToken \
+certoraRun certora/harness/BridgeHarness.sol \
+        certora/harness/BridgeL2Harness.sol \
+        certora/harness/DummyERC20UnderlyingA_L1.sol \
+        certora/harness/DummyERC20UnderlyingB_L1.sol \
+        certora/harness/ATokenWithPoolA_L1.sol \
+        certora/harness/ATokenWithPoolB_L1.sol \
+        certora/harness/StaticATokenA_L2.sol \
+        certora/harness/StaticATokenB_L2.sol \
+        certora/harness/DummyERC20RewardToken.sol \
+        certora/harness/SymbolicLendingPoolL1.sol \
+        certora/harness/IncentivesControllerMock_L1.sol \
+        \
+        --verify BridgeHarness:certora/specs/bridge.spec \
+        --link BridgeHarness:_rewardToken=DummyERC20RewardToken \
                     BridgeHarness:_incentivesController=IncentivesControllerMock_L1 \
                     BridgeHarness:BRIDGE_L2=BridgeL2Harness \
                     IncentivesControllerMock_L1:_rewardToken=DummyERC20RewardToken \

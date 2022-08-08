@@ -14,6 +14,7 @@ import "erc20.spec"
     using ATokenWithPoolB_L1 as ATOKEN_B
     using DummyERC20RewardToken as REWARD_TOKEN
     using SymbolicLendingPoolL1 as LENDINGPOOL_L1
+    using IncentivesControllerMock_L1 as incentivesController
 
 /************************
  *     L2 contracts     *
@@ -81,8 +82,8 @@ methods {
     mint(address, uint256) returns (bool) => DISPATCHER(true)
     burn(address, address, uint256, uint256) => DISPATCHER(true)
     burn(address, uint256) returns (bool) => DISPATCHER(true)
-    POOL() returns (address) envfree => DISPATCHER(true)
-    scaledTotalSupply() returns (uint256) envfree => DISPATCHER(true)
+    POOL() returns (address) => DISPATCHER(true)
+    scaledTotalSupply() returns (uint256) => DISPATCHER(true)
     UNDERLYING_ASSET_ADDRESS() => DISPATCHER(true) 
     getIncentivesController() => NONDET
 
@@ -90,9 +91,9 @@ methods {
  *     IncentivesControllerMock     *
  ************************************/
     _rewardToken() returns (address) envfree => DISPATCHER(true)
-    DISTRIBUTION_END() returns (uint256) envfree => DISPATCHER(true)
-    getRewardsVault() returns (address) envfree => DISPATCHER(true)
-    getAssetData(address) returns (uint256, uint256, uint256) envfree => DISPATCHER(true)
+    DISTRIBUTION_END() returns (uint256) => CONSTANT
+    getRewardsVault() returns (address) => DISPATCHER(true)
+    getAssetData(address) returns (uint256, uint256, uint256) => DISPATCHER(true)
     // Note that the sender of the funds here is RewardsVault which is arbitrary by default.
     // If any rule that count on the reward token balance, calls this method a `require RewardsVault != to` make sense to add
     claimRewards(address[], uint256, address) returns (uint256) => DISPATCHER(true)
@@ -103,7 +104,7 @@ methods {
     BRIDGE_L2.l2RewardsIndexSetter(uint256)
     BRIDGE_L2.deposit(address, uint256, address) 
     BRIDGE_L2.initiateWithdraw(address, uint256, address, address, bool) returns (uint256)
-    BRIDGE_L2.bridgeRewards(address, uint256, uint256)
+    BRIDGE_L2.bridgeRewards(address, address, uint256)
     BRIDGE_L2.claimRewards(address, address)
     BRIDGE_L2.l2RewardsIndex() returns (uint256) envfree
     BRIDGE_L2.getStaticATokenAddress(address) returns (address) envfree
@@ -122,8 +123,11 @@ methods {
 //                       Definitions                                      //
 ////////////////////////////////////////////////////////////////////////////
 
+// Definition of RAY unit
 definition RAY() returns uint256 = 10^27;
 
+// The following definition shall be used later in some invariants,
+// by filtering out the 'initialize' function.
 definition excludeInitialize(method f) returns bool =
     f.selector != 
     initialize(uint256, address, address, address[], uint256[]).selector; 
@@ -160,11 +164,13 @@ definition excludeInitialize(method f) returns bool =
 
 rule integrityOfWithdraw(method f, address recipient, address aToken){
     uint256 l2sender; bool toUnderlyingAsset;
-    uint256 staticAmount; uint256 l2RewardsIndex;
+    uint256 staticAmount; 
     env e; calldataarg args;
     address underlying;
     address static;
+    uint256 l2RewardsIndex = BRIDGE_L2.l2RewardsIndex();
     setLinkage(underlying, aToken, STATIC_ATOKEN_A);
+    requireValidUser(e.msg.sender);
     setUnderlyingAToken(aToken, underlying);
     requireValidTokens(underlying, aToken, STATIC_ATOKEN_A);
     requireInvariant ATokenAssetPair(underlying, aToken);
@@ -173,6 +179,9 @@ rule integrityOfWithdraw(method f, address recipient, address aToken){
     uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
     uint256 rewardTokenBalanceBefore = tokenBalanceOf(e, REWARD_TOKEN, recipient);
 
+    uint256 rewards = _computeRewardsDiff_Wrapper(staticAmount, l2RewardsIndex, _getCurrentRewardsIndex_Wrapper(e, aToken));
+    uint256 gain = _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
+
     initiateWithdraw_L2(e, aToken, staticAmount, recipient, toUnderlyingAsset);
 
     uint256 underlyingBalanceAfter = tokenBalanceOf(e, underlying, recipient);
@@ -180,57 +189,79 @@ rule integrityOfWithdraw(method f, address recipient, address aToken){
     uint256 rewardTokenBalanceAfter = tokenBalanceOf(e, REWARD_TOKEN, recipient);
 
     if (toUnderlyingAsset){
-        assert underlyingBalanceAfter <= underlyingBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
+        assert 
+        (underlyingBalanceAfter == underlyingBalanceBefore + gain) &&
+        (aTokenBalanceAfter == aTokenBalanceBefore);
     }
     else {
-        assert aTokenBalanceAfter <= aTokenBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
+        assert 
+        (aTokenBalanceAfter == aTokenBalanceBefore + gain) &&
+        (underlyingBalanceAfter == underlyingBalanceBefore);
+
     }
-    assert rewardTokenBalanceAfter <= rewardTokenBalanceBefore + _computeRewardsDiff_Wrapper(staticAmount, l2RewardsIndex, _getCurrentRewardsIndex_Wrapper(e, aToken));
+    assert rewardTokenBalanceAfter == rewardTokenBalanceBefore + rewards;
 }
 
 /*
     @Rule
 
     @Description:
-        Balance of underlying asset should not change unless by calling to deposit/withdraw
+        Balance of underlying asset change iff deposit/withdraw was called 
 
     @Formula:
         {
 
         }
-
         < call any function >
-        
         {
             underlyingBalanceAfter == underlyingBalanceBefore => < any function besides deposit or withdraw was called >
             < Neither deposit nor withdraw were called > => underlyingBalanceAfter == underlyingBalanceBefore
         }
 
     @Note:
-
+        Although withdraw() shouldn't be called by an external user,
+        it does change the underlying balance, therefore we include it 
+        in the assert statement.
     @Link:
 */
 
-/*
-rule balanceOfUnderlyingAssetChanged(method f, address u, address aToken) {
-    env eB;
-    env eF;
-    calldataarg args;
+rule balanceOfUnderlyingAssetChanged(method f, uint256 amount) {
+    env e;    
     address asset;
-    setLinkage(asset, aToken, STATIC_ATOKEN_A);
-    address underlying  = getUnderlyingAssetOfAToken(aToken);
-    uint256 underlyingBalanceBefore = tokenBalanceOf(eB, underlying, u);
-    
-    address aToken2; uint256 l2Recipient; address recipient; uint256 amount;
+    address AToken;
+    address static;
+    address recipient;
+    address sender = e.msg.sender;
+    tokenSelector(asset, AToken, static);
+    setLinkage(asset, AToken, static);
+    requireInvariant ATokenAssetPair(asset, AToken);
+    require recipient != AToken && recipient != Bridge && recipient != BRIDGE_L2;
+    require sender != AToken && sender != Bridge && sender != BRIDGE_L2;
 
-    //callFunctionWithParams(f, eF, aToken2, l2Recipient, recipient, amount);
+    // Underlying asset balances of sender and recipient before call.
+    uint256 senderBalanceU1 = tokenBalanceOf(e, asset, e.msg.sender);
+    uint256 recipientBalanceU1 = tokenBalanceOf(e, asset, recipient);
 
-    uint256 underlyingBalanceAfter = tokenBalanceOf(eB, underlying, u);
-    assert (underlyingBalanceAfter != underlyingBalanceBefore
-            <=> ((f.selector == deposit(address, uint256, uint256, uint16, bool).selector) ||
-             (f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector))), "balanceOf changed";
+    // Call any interface function 
+    callFunctionSetParams(f, e, recipient, AToken, asset, amount, true);
+
+    // Underlying asset balances of sender and recipient after call.
+    uint256 senderBalanceU2 = tokenBalanceOf(e, asset, e.msg.sender);
+    uint256 recipientBalanceU2 = tokenBalanceOf(e, asset, recipient);
+
+    bool balancesChanged = 
+        !(senderBalanceU2 == senderBalanceU1 && 
+            recipientBalanceU1 == recipientBalanceU2);
+
+    assert balancesChanged <=> amount !=0 &&
+            (f.selector == deposit(address, uint256, uint256, uint16, bool).selector 
+            ||
+            f.selector == withdraw(address,uint256,address,uint256,uint256,bool).selector
+            ||
+            f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector)
+            , "balanceOf changed";
 }
-*/
+
 
 // Rule violation, check required:
 // https://vaas-stg.certora.com/output/41958/6e479c078ba3ef87986c/?anonymousKey=74b8bd40ffa18ccdf3d77c2283e32d714218a029
@@ -249,13 +280,11 @@ rule depositWithdrawReversed(uint256 amount)
     uint256 index_L2 = BRIDGE_L2.l2RewardsIndex();
 
     setLinkage(asset, Atoken, static);
-    requireValidTokens(asset, Atoken, static);
+    tokenSelector(asset, Atoken, static);
     requireInvariant ATokenAssetPair(asset, Atoken);
     require eF.msg.sender == eB.msg.sender;
     requireRayIndex();
     requireValidUser(eF.msg.sender);
-
-    require amount * 2 * RAY() > index_L1;
 
     uint256 balanceU1 = tokenBalanceOf(eB, asset, eB.msg.sender);
     uint256 balanceA1 = tokenBalanceOf(eB, Atoken, eB.msg.sender);
@@ -275,6 +304,7 @@ rule depositWithdrawReversed(uint256 amount)
 }
 
 // Checks that the transitions between static to dynamic are inverses.
+// Verified
 rule dynamicToStaticInversible1(uint256 amount)
 {
     // We assume both indexes (L1,L2) are represented in Ray (1e27).
@@ -285,6 +315,7 @@ rule dynamicToStaticInversible1(uint256 amount)
     assert amount == stat;
 }
 
+// Violated
 rule dynamicToStaticInversible2(uint256 amount)
 {
     // We assume both indexes (L1,L2) are represented in Ray (1e27).
@@ -298,6 +329,8 @@ rule dynamicToStaticInversible2(uint256 amount)
 // Check consistency of 'asset' being registered as the underlying
 // token of 'AToken', both in the AToken contract, and also in the 
 // mapping _aTokenData.
+// We exclude the 'initialize' function since it is called only once
+// in the code. 
 invariant underlying2ATokenConsistency(address AToken, address asset)
      (asset !=0 <=> AToken !=0) 
      =>
@@ -308,6 +341,8 @@ invariant underlying2ATokenConsistency(address AToken, address asset)
 
 // Check consistency of 'asset' being registered as the underlying
 // token of 'AToken', and 'AToken' connected to 'asset' in the lending pool.
+// We exclude the 'initialize' function since it is called only once
+// in the code. 
 invariant ATokenAssetPair(address asset, address AToken)
     (asset !=0 <=> AToken !=0) 
     =>
@@ -316,6 +351,9 @@ invariant ATokenAssetPair(address asset, address AToken)
     getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken)
     filtered{f-> excludeInitialize(f)}
 
+// The aToken-asset pair should be correctly registered after calling
+// initialize, right after the constructor.
+// This is complementary to the two invariants above.
 rule initializeIntegrity(address AToken, address asset)
 {
     env e;
@@ -338,22 +376,29 @@ rule initializeIntegrity(address AToken, address asset)
         getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken));
 }
     
-
 ////////////////////////////////////////////////////////////////////////////
 //                       Functions                                        //
 ////////////////////////////////////////////////////////////////////////////
 
+// Selects specific instances for underlying asset, AToken and static tokens.
+function tokenSelector(
+    address asset, 
+    address AToken, 
+    address static){
+    require asset == UNDERLYING_ASSET_A || asset == UNDERLYING_ASSET_B;
+    require AToken == ATOKEN_A || AToken == ATOKEN_B;
+    require static == STATIC_ATOKEN_A || static == STATIC_ATOKEN_B;
+}
+
 // By definition, the liquidity indexes are expressed in RAY units.
-// Therefore they must be as large as RAY (assuming liquidity index > 1).
+// Therefore they must be at least as large as RAY (assuming liquidity index > 1).
 function requireRayIndex() {
     require LENDINGPOOL_L1.liquidityIndex() >= RAY();
     require BRIDGE_L2.l2RewardsIndex() >= RAY();
 }
 
 // Linking the instances of ERC20s and LendingPool 
-// within the ATokenData struct to the corresponding 
-// symbolic contracts.
-
+// within the ATokenData struct to the corresponding symbolic contracts.
 function setLinkage(
     address asset, 
     address AToken, 
@@ -407,41 +452,39 @@ function requireValidUser(address user){
         user != STATIC_ATOKEN_A &&
         user != STATIC_ATOKEN_B &&
         user != REWARD_TOKEN &&
-        user != LENDINGPOOL_L1;
+        user != LENDINGPOOL_L1 &&
+        user != incentivesController;
 }
 
+// Returns the address of the reward token contract (used for summarization)
 function rewardToken() returns address {
     return REWARD_TOKEN;
 }
 
-// Helper function that allows to call an arbirary function with explicit values (you can move parameters from the body of the function to the args line)
-// returns the return value of the called method, or 0 in case of methods that doesnt return anything
-// @dev Fixes are advised.
-function callFunctionWithParams(method f, env e, address l1AToken, uint256 l2Recipient, address recipient, uint256 amount) returns uint256{
-        address messagingContract; address incentivesController; uint16 referralCode; uint256 l2Bridge;
-        bool fromUnderlyingAsset; bool toUnderlyingAsset;  uint256 l2RewardsIndex;
-        uint256 staticAmount; uint256 l2sender;
-        address[] l1Tokens;
-        uint256[] l2Tokens;
-
-	if (f.selector == initialize(uint256, address, address, address[], uint256[]).selector) {
-		initialize(e, l2Bridge, messagingContract, incentivesController, l1Tokens, l2Tokens);
+function callFunctionSetParams(
+    method f, env e, address receiver,
+    address aToken, address asset,
+    uint256 amount, bool fromToUnderlyingAsset) returns uint256 {
+    if (f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector){
+        return initiateWithdraw_L2(e, aToken, amount, receiver, fromToUnderlyingAsset); 
+    }   
+    else if (f.selector == deposit(address, uint256, uint256, uint16, bool).selector){
+        uint256 l2Recipient = BRIDGE_L2.address2uint256(receiver);
+        uint16 referralCode;
+        return deposit(e, aToken, l2Recipient, amount, referralCode, fromToUnderlyingAsset);
+    }
+    else if (f.selector == bridgeRewards_L2(address, uint256).selector) {
+        bridgeRewards_L2(e, receiver, amount);
         return 0;
-	} else if (f.selector == deposit(address, uint256, uint256, uint16, bool).selector) {
-		uint256 result = deposit(e, l1AToken, l2Recipient, amount, referralCode, fromUnderlyingAsset);
-        return result;
-	} else if (f.selector == withdraw(address, uint256, address, uint256, uint256, bool).selector) {
-		withdraw(e, l1AToken, l2sender, recipient, staticAmount, l2RewardsIndex, toUnderlyingAsset);
+    }
+    else if (f.selector == withdraw(address, uint256, address, uint256, uint256, bool).selector) {
+        uint256 l2sender;
+        withdraw(e, aToken, l2sender, receiver, amount, BRIDGE_L2.l2RewardsIndex(), fromToUnderlyingAsset);
         return 0;
-	} else if  (f.selector == updateL2State(address).selector) {
-        updateL2State(e, l1AToken);
-        return 0;
-	} else if (f.selector == receiveRewards(uint256, address, uint256).selector) {
-		receiveRewards(e, l2sender, recipient, amount);
-        return 0;
-	} else {
+    }
+    else {
         calldataarg args;
         f(e, args);
         return 0;
-    }
+    }     
 }

@@ -46,8 +46,8 @@ contract ATokenWithPoolImpl is DummyERC20ExtendedImpl {
         address user, 
         uint256 amount,
         uint256 index       
-    ) external onlyOwner {
-        super.mint(user, amount);
+    ) external onlyOwner returns (bool) {
+        return super.mint(user, amount);
     }
 
     /**
@@ -79,5 +79,4 @@ contract ATokenWithPoolImpl is DummyERC20ExtendedImpl {
     {
         return UNDERLYING_ASSET_ADDRESS;
     }
-
 }
