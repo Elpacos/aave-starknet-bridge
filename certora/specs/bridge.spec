@@ -250,10 +250,9 @@ rule balanceOfUnderlyingAssetChanged(method f, uint256 amount) {
     uint256 recipientBalanceU2 = tokenBalanceOf(e, asset, recipient);
 
     bool balancesChanged = 
-        !(senderBalanceU2 == senderBalanceU1 && 
-            recipientBalanceU1 == recipientBalanceU2);
+        !(senderBalanceU2 == senderBalanceU1 && recipientBalanceU1 == recipientBalanceU2);
 
-    assert balancesChanged <=> amount !=0 &&
+    assert balancesChanged <=>
             (f.selector == deposit(address, uint256, uint256, uint16, bool).selector 
             ||
             f.selector == withdraw(address,uint256,address,uint256,uint256,bool).selector
@@ -276,11 +275,8 @@ rule depositWithdrawReversed(uint256 amount)
     bool fromUA; // from underlying asset
     bool toUA; // to underlying asset
 
-    uint256 index_L1 = LENDINGPOOL_L1.liquidityIndex(); 
-    uint256 index_L2 = BRIDGE_L2.l2RewardsIndex();
-
-    setLinkage(asset, Atoken, static);
     tokenSelector(asset, Atoken, static);
+    setLinkage(asset, Atoken, static);
     requireInvariant ATokenAssetPair(asset, Atoken);
     require eF.msg.sender == eB.msg.sender;
     requireRayIndex();
@@ -299,7 +295,7 @@ rule depositWithdrawReversed(uint256 amount)
     uint256 balanceS3 = tokenBalanceOf(eB, static, eB.msg.sender);
     
     assert balanceS1 == balanceS3;
-    assert index_L1 == index_L2 && fromUA == toUA => 
+    assert fromUA == toUA => 
         (balanceA1 == balanceA3 && balanceU1 == balanceU3);
 }
 
@@ -324,6 +320,21 @@ rule dynamicToStaticInversible2(uint256 amount)
     uint256 stat = _dynamicToStaticAmount_Wrapper(amount, asset, LENDINGPOOL_L1);
     uint256 dynm = _staticToDynamicAmount_Wrapper(stat, asset, LENDINGPOOL_L1);
     assert amount == dynm;
+}
+
+// Checks that it isn't possible to gain from transforming dynamic to static
+// and back.
+// This is violated because the mul and div are not inverses of each other,
+// therefore can lead to mul(div(a,b),b) > a (depends on remainder value).
+rule assetRoundTripNoGain(uint256 amount)
+{
+    requireRayIndex();
+    // Just for debugging.
+    uint256 indexL1 = LENDINGPOOL_L1.liquidityIndex();
+    address asset;
+    uint256 stat = _dynamicToStaticAmount_Wrapper(amount, asset, LENDINGPOOL_L1);
+    uint256 dynm = _staticToDynamicAmount_Wrapper(stat, asset, LENDINGPOOL_L1);
+    assert amount >= dynm;
 }
 
 // Check consistency of 'asset' being registered as the underlying

@@ -27,8 +27,8 @@ certoraRun certora/harness/BridgeHarness.sol \
             --send_only \
             --staging \
             --rule_sanity basic \
-            --rule depositWithdrawReversed \
-            --msg "AAVE S-Net Bridge depositWithdrawReversed"
+            --rule balanceOfUnderlyingAssetChanged \
+            --msg "AAVE S-Net Bridge balanceOfUnderlyingAssetChanged"
 
 # The first line (#6) specifies all the contracts that are being called through the bridge.sol file.
 # This is a declaration of multiple contracts for the verification context.
