@@ -16,9 +16,9 @@ certoraRun certora/harness/BridgeHarness.sol \
                     BridgeHarness:BRIDGE_L2=BridgeL2Harness \
                     IncentivesControllerMock_L1:_rewardToken=DummyERC20RewardToken \
                     ATokenWithPoolA_L1:POOL=SymbolicLendingPoolL1 \
-                    ATokenWithPoolA_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
+                    ATokenWithPoolA_L1:_incentivesController=IncentivesControllerMock_L1 \
                     ATokenWithPoolB_L1:POOL=SymbolicLendingPoolL1 \
-                    ATokenWithPoolB_L1:INCENTIVES_CONTROLLER=IncentivesControllerMock_L1 \
+                    ATokenWithPoolB_L1:_incentivesController=IncentivesControllerMock_L1 \
                     BridgeL2Harness:BRIDGE_L1=BridgeHarness \
                     BridgeL2Harness:REW_AAVE=DummyERC20RewardToken \
             --solc solc8.10 \
