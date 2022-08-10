@@ -10,6 +10,7 @@ import {IBridge} from "../../contracts/l1/interfaces/IBridge.sol";
 contract DummyStaticATokenImpl is DummyERC20ExtendedImpl {
     IBridge_L2 internal _L2Bridge;
     
+    // user address -> the unclaimed rewards (assumed arbitrary value) 
     mapping(address => uint256) internal unclaimedRewards;
 
     constructor(address owner_, 

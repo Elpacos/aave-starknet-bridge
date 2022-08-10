@@ -69,7 +69,6 @@ contract BridgeL2Harness is IBridge_L2 {
      * @param caller Represents the caller on L2.
      * @param to The recipient of the minted staticAtokens on the L1 side
      * @param toUnderlyingAsset whether to withdraw in underlying asset (true) or in AToken (false).
-     * @return The amount that is being withdrawn
      **/
     function initiateWithdraw(
         address asset,
@@ -77,7 +76,7 @@ contract BridgeL2Harness is IBridge_L2 {
         address caller,
         address to,
         bool toUnderlyingAsset)
-        external onlyL1Bridge returns (uint256) {
+        external onlyL1Bridge {
         IERC20_Extended(AtokenToStaticAToken_L2[asset]).burn(
             caller,
             amount
@@ -91,7 +90,6 @@ contract BridgeL2Harness is IBridge_L2 {
             l2RewardsIndex,
             toUnderlyingAsset
         );
-        return amount;
     }
 
     /**
@@ -109,10 +107,15 @@ contract BridgeL2Harness is IBridge_L2 {
         );
     }
 
+    /**
+     * @dev Mints the unclaimed rewards on the L2 side accumulated by a user who owns staticAToken.
+     * our harness assumes an arbitrary value to be claimed, and then it is set permanently to 0.
+     * @param caller The L1 user address that withdraws the reward
+     * @param staticAToken The staticAToken address
+     **/
     function claimRewards(address caller, address staticAToken)
     external onlyL1Bridge{
         uint256 amount = IStaticAToken(staticAToken).claimRewards(caller);
         IERC20_Extended(REW_AAVE).mint(caller, amount);
-
     }
 }

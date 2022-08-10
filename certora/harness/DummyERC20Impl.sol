@@ -30,16 +30,16 @@ contract DummyERC20Impl {
         return a - b;
     }
 
-    function totalSupply() public view returns (uint256) {
+    function totalSupply() public view virtual returns (uint256) {
         return t;
     }
 
-    function balanceOf(address account) public view returns (uint256) {
+    function balanceOf(address account) public view virtual returns (uint256) {
         return b[account];
     }
 
     function transfer(address recipient, uint256 amount)
-        external
+        virtual external
         returns (bool)
     {
         b[msg.sender] = sub(b[msg.sender], amount);
@@ -64,7 +64,7 @@ contract DummyERC20Impl {
         address sender,
         address recipient,
         uint256 amount
-    ) external returns (bool) {
+    ) external virtual returns (bool) {
         b[sender] = sub(b[sender], amount);
         b[recipient] = add(b[recipient], amount);
         a[sender][msg.sender] = sub(a[sender][msg.sender], amount);

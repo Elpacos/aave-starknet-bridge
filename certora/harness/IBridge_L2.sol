@@ -15,8 +15,7 @@ interface IBridge_L2 {
         uint256 amount,
         address caller,
         address to,
-        bool toUnderlyingAsset
-    ) external returns (uint256);
+        bool toUnderlyingAsset) external;
 
     function getRewTokenAddress() external view returns(address);
 

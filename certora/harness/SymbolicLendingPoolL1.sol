@@ -5,8 +5,10 @@ import {IERC20} from "@aave/core-v3/contracts/dependencies/openzeppelin/contract
 import {IAToken} from "../../contracts/l1/interfaces/IAToken.sol";
 
 contract SymbolicLendingPoolL1 {
+    // underlying asset address -> AToken address of that token.
     mapping(address => address) public underlyingAssetToAToken_L1;
-    uint256 public liquidityIndex; 
+    // underlying asset -> pool liquidity index of that asset
+    mapping(address => uint256) public liquidityIndex;
 
     /**
      * @dev Deposits underlying token in the Atoken's contract on behalf of the user,
@@ -14,7 +16,7 @@ contract SymbolicLendingPoolL1 {
      * @param asset The underlying sent by the user and to which Atoken shall be minted
      * @param amount The amount of underlying token sent by the user
      * @param onBehalfOf The recipient of the minted Atokens
-     * @param referralCode A unique code
+     * @param referralCode A unique code (unused)
      **/
     function deposit(
         address asset,
@@ -30,14 +32,14 @@ contract SymbolicLendingPoolL1 {
         IAToken(underlyingAssetToAToken_L1[asset]).mint(
             onBehalfOf,
             amount,
-            liquidityIndex
+            liquidityIndex[asset]
         );
     }
 
     /**
      * @dev Burns Atokens in exchange for underlying asset
      * @param asset The underlying asset to which the Atoken is connected
-     * @param amount The amount of Atokens to be burned
+     * @param amount The amount of underlying tokens to be burned
      * @param to The recipient of the burned Atokens
      * @return The `amount` of tokens withdrawn
      **/
@@ -50,7 +52,7 @@ contract SymbolicLendingPoolL1 {
             msg.sender,
             to,
             amount,
-            liquidityIndex
+            liquidityIndex[asset]
         );
         return amount;
     }
@@ -58,7 +60,7 @@ contract SymbolicLendingPoolL1 {
     /**
      * @dev A simplification returning a constant
      * @param asset The underlying asset to which the Atoken is connected
-     * @return liquidityIndex the `liquidityIndex`
+     * @return liquidityIndex the `liquidityIndex` of the asset
      **/
     function getReserveNormalizedIncome(address asset)
         external
@@ -66,12 +68,48 @@ contract SymbolicLendingPoolL1 {
         virtual
         returns (uint256)
     {
-        return liquidityIndex;
+        return liquidityIndex[asset];
     }
+
+    /*
+    * @dev Returns the ongoing normalized income for the reserve
+    * A value of 1e27 means there is no income. As time passes, the income is accrued
+    * A value of 2*1e27 means for each unit of asset one unit of income has been accrued
+    * @param reserve The reserve object
+    * @return the normalized income. expressed in ray
+    */
+    /* 
+    function getNormalizedIncome(DataTypes.ReserveData storage reserve)
+    internal
+    view
+    returns (uint256)
+    {
+    uint40 timestamp = reserve.lastUpdateTimestamp;
+
+    //solium-disable-next-line
+    if (timestamp == uint40(block.timestamp)) {
+        //if the index was updated in the same block, no need to perform any calculation
+        return reserve.liquidityIndex;
+    }
+
+    uint256 cumulated =
+        MathUtils.calculateLinearInterest(reserve.currentLiquidityRate, timestamp).rayMul(
+        reserve.liquidityIndex
+        );
+
+    return cumulated;
+    }
+    */
 
     // Returns the Atoken address of an underlying asset.
     function underlyingtoAToken(address asset) external view
     returns(address){
         return underlyingAssetToAToken_L1[asset];
+    }
+
+    // Returns the pool liquidity index of an underlying asset.
+    function liquidityIndexByAsset(address asset) external view
+    returns(uint256){
+        return liquidityIndex[asset];
     }
 }

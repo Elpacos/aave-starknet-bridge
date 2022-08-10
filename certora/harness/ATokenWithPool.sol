@@ -2,13 +2,13 @@ pragma solidity 0.8.10;
 pragma experimental ABIEncoderV2;
 
 import {DummyERC20Impl} from "./DummyERC20Impl.sol";
-//import {IERC20} from "@aave/core-v3/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
+import {IATokenWithPool} from "./IATokenWithPool.sol";
 import {SafeCast} from "@aave/core-v3/contracts/dependencies/openzeppelin/contracts/SafeCast.sol";
 import {WadRayMath} from "@aave/core-v3/contracts/protocol/libraries/math/WadRayMath.sol";
 import {IAaveIncentivesController} from "../../contracts/l1/interfaces/IAaveIncentivesController.sol";
 import {ILendingPool} from "../../contracts/l1/interfaces/ILendingPool.sol";
 
-contract ATokenWithPool is DummyERC20Impl {
+contract ATokenWithPool is IATokenWithPool {
     using WadRayMath for uint256;
     using SafeCast for uint256;
 
@@ -27,18 +27,25 @@ contract ATokenWithPool is DummyERC20Impl {
     * this field to store the user's stable rate.
     */
     struct UserState {
-    uint128 balance;
-    uint128 additionalData;
+        uint128 balance;
+        uint128 additionalData;
     }
     // Map of users address and their state data (userAddress => userStateData)
     mapping(address => UserState) internal _userState;
+    // Total supply
+    uint256 t;
+    // Allowances
+    mapping(address => mapping(address => uint256)) a;
 
+    string public name;
+    string public symbol;
+    uint256 public decimals;
     address internal _treasury;
     address internal _underlyingAsset;
-    IAaveIncentivesController internal _incentivesController;
+    IAaveIncentivesController public _incentivesController;
     ILendingPool public POOL;
 
-    constructor(address pool) DummyERC20Impl()
+    constructor(address pool)
     {
         POOL = ILendingPool(pool);
     }
@@ -52,7 +59,11 @@ contract ATokenWithPool is DummyERC20Impl {
     }
 
     function totalSupply_super() public view virtual returns (uint256) {
-    return super.totalSupply();
+    return t;
+    }
+
+    function scaledTotalSupply() public view returns (uint256) {
+    return t;
     }
 
     function balanceOf_super(address account) public view virtual returns (uint256) {
@@ -61,6 +72,19 @@ contract ATokenWithPool is DummyERC20Impl {
 
     function _msgSender() internal view virtual returns (address payable) {
     return payable(msg.sender);
+    }
+
+    function allowance(address owner, address spender)
+        external
+        view
+        returns (uint256)
+    {
+        return a[owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        a[msg.sender][spender] = amount;
+        return true;
     }
 
     function mint(
@@ -167,9 +191,9 @@ contract ATokenWithPool is DummyERC20Impl {
     uint256 amountScaled = amount.rayDiv(index);
     require(amountScaled != 0, "INVALID_BURN_AMOUNT");
 
-    uint256 scaledBalance = balanceOf_super(user);
+    //uint256 scaledBalance = balanceOf_super(user);
     //uint256 balanceIncrease = scaledBalance.rayMul(index) -
-        scaledBalance.rayMul(_userState[user].additionalData);
+    //    scaledBalance.rayMul(_userState[user].additionalData);
 
     _userState[user].additionalData = index.toUint128();
 
@@ -265,11 +289,8 @@ contract ATokenWithPool is DummyERC20Impl {
   }
 
     function balanceOf(address user)
-    public
-    view override
-    returns (uint256)
-    {
-    return balanceOf_super(user).rayMul(POOL.getReserveNormalizedIncome(_underlyingAsset));
+    public view override returns (uint256) {
+        return balanceOf_super(user).rayMul(POOL.getReserveNormalizedIncome(_underlyingAsset));
     }
 
     function totalSupply() public view override returns (uint256) {
@@ -286,7 +307,7 @@ contract ATokenWithPool is DummyERC20Impl {
     return _treasury;
     }
 
-    function UNDERLYING_ASSET_ADDRESS() external view  returns (address) {
+    function UNDERLYING_ASSET_ADDRESS() external view returns (address) {
     return _underlyingAsset;
     }
 
@@ -294,18 +315,18 @@ contract ATokenWithPool is DummyERC20Impl {
         external
         returns (bool)
     {
-        _userState[msg.sender].balance = sub128(_userState[msg.sender].balance, amount);
-        _userState[recipient].balance = add128(_userState[recipient].balance, amount);
+        _userState[msg.sender].balance = sub(_userState[msg.sender].balance, amount);
+        _userState[recipient].balance = add(_userState[recipient].balance, amount);
         return true;
     }
 
-    function add128(uint128 a, uint128 b) internal pure returns (uint128) {
+    function add(uint128 a, uint128 b) internal pure returns (uint128) {
         uint128 c = a + b;
         require(c >= a);
         return c;
     }
 
-    function sub128(uint128 a, uint128 b) internal pure returns (uint128) {
+    function sub(uint128 a, uint128 b) internal pure returns (uint128) {
         require(a >= b);
         return a - b;
     }

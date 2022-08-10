@@ -8,10 +8,20 @@ import {IStaticAToken} from "./IStaticAToken.sol";
 
 contract BridgeHarness is Bridge {
     IBridge_L2 public BRIDGE_L2;
+    bool private withdrawMessageSent;
+    bool private bridgeRewardsMessageSent;
 
     /*************************
      *        Getters        *
      *************************/
+
+    function withdrawMessageStatus() external view returns (bool){
+        return withdrawMessageSent;
+    }
+
+    function bridgeRewardsMessageStatus() external view returns (bool){
+        return bridgeRewardsMessageSent;
+    }
 
     // Retrieving the UnderlyingAsset of the AToken
     function getUnderlyingAssetOfAToken(address AToken)
@@ -21,14 +31,14 @@ contract BridgeHarness is Bridge {
     
      /**
      * @dev Retrieving the AToken address of an underlying asset
-     * @param LendPool Lendingpool to search the AToken for.
+     * @param lendPool lending pool to search the AToken for.
      * @param asset The underlying asset to which the Atoken is connected
      * @return Atoken the `atoken` address
      **/
-    function getATokenOfUnderlyingAsset(SymbolicLendingPoolL1 LendPool, address asset)
+    function getATokenOfUnderlyingAsset(SymbolicLendingPoolL1 lendPool, address asset)
     public view returns (address)
     {
-        return LendPool.underlyingtoAToken(asset);
+        return lendPool.underlyingtoAToken(asset);
     }
 
     // Retrieving the LendingPool of the AToken
@@ -85,8 +95,7 @@ contract BridgeHarness is Bridge {
         uint256 l2RewardsIndex,
         uint256 l1RewardsIndex
     ) external pure returns (uint256) {
-        return
-            super._computeRewardsDiff(amount, l2RewardsIndex, l1RewardsIndex);
+        return super._computeRewardsDiff(amount, l2RewardsIndex, l1RewardsIndex);
     }
 
     /*****************************************
@@ -113,7 +122,9 @@ contract BridgeHarness is Bridge {
         address recipient,
         uint256 amount,
         uint256 l2RewardsIndex
-    ) internal override {}
+    ) internal override {
+        require(withdrawMessageSent, "cannot consume unsent message");
+    }
 
     // A L1-L2 RewardIndex sync. A call from L1 syncs the value with L2.
     function _sendIndexUpdateMessage(
@@ -131,7 +142,9 @@ contract BridgeHarness is Bridge {
         uint256 l2sender,
         address recipient,
         uint256 amount
-    ) internal override {}
+    ) internal override {
+        require(bridgeRewardsMessageSent, "cannot consume unsent message");
+    }
 
     // =============== L2 interface ========================================
     // Called from this contract ===========================================
@@ -142,11 +155,18 @@ contract BridgeHarness is Bridge {
         address to,
         bool toUnderlyingAsset
     ) external returns (uint256) {
-        return BRIDGE_L2.initiateWithdraw(asset, amount, msg.sender, to, toUnderlyingAsset);
+        require(!withdrawMessageSent, "A message is already being consumed");
+        withdrawMessageSent = true;
+        BRIDGE_L2.initiateWithdraw(asset, amount, msg.sender, to, toUnderlyingAsset);
+        withdrawMessageSent = false;
+        return amount;
     }
 
     function bridgeRewards_L2(address recipient, uint256 amount) external {
+        require(!bridgeRewardsMessageSent, "A message is already being consumed");
+        bridgeRewardsMessageSent = true;
         BRIDGE_L2.bridgeRewards(recipient, msg.sender, amount);
+        bridgeRewardsMessageSent = false;
     }
 
     function claimRewardsStatic_L2(address staticAToken) external {
