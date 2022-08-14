@@ -8,6 +8,8 @@ contract SymbolicLendingPoolL1 {
     // underlying asset address -> AToken address of that token.
     mapping(address => address) public underlyingAssetToAToken_L1;
     // underlying asset -> pool liquidity index of that asset
+    // This index is used to convert the underlying token to its matching
+    // AToken inside the pool, and vice versa.
     mapping(address => uint256) public liquidityIndex;
 
     /**
@@ -71,6 +73,10 @@ contract SymbolicLendingPoolL1 {
         return liquidityIndex[asset];
     }
 
+
+    // Original code from AAVE LendingPool:
+    // The version we use above assumes timestamp == uint40(block.timestamp) 
+    // or alternatively, a very small value for LiquidityRate.
     /*
     * @dev Returns the ongoing normalized income for the reserve
     * A value of 1e27 means there is no income. As time passes, the income is accrued

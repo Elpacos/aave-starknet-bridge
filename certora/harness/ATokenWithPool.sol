@@ -311,23 +311,12 @@ contract ATokenWithPool is IATokenWithPool {
     return _underlyingAsset;
     }
 
-    function transfer(address recipient, uint128 amount)
+    function transfer(address recipient, uint256 amount)
         external
         returns (bool)
     {
-        _userState[msg.sender].balance = sub(_userState[msg.sender].balance, amount);
-        _userState[recipient].balance = add(_userState[recipient].balance, amount);
+        uint128 castAmount = amount.toUint128();
+        _transfer(_msgSender(), recipient, castAmount);
         return true;
-    }
-
-    function add(uint128 a, uint128 b) internal pure returns (uint128) {
-        uint128 c = a + b;
-        require(c >= a);
-        return c;
-    }
-
-    function sub(uint128 a, uint128 b) internal pure returns (uint128) {
-        require(a >= b);
-        return a - b;
     }
 }
