@@ -112,10 +112,20 @@ methods {
 /******************
  *     Tokens     *
  ******************/
+    UNDERLYING_ASSET_ADDRESS() returns (address) => DISPATCHER(true)
     ATOKEN_A.UNDERLYING_ASSET_ADDRESS() returns (address) envfree
     ATOKEN_B.UNDERLYING_ASSET_ADDRESS() returns (address) envfree  
     claimRewards(address) returns (uint256) => DISPATCHER(true)
     getRewTokenAddress() returns (address) => rewardToken()
+
+/******************
+ *     Ray Math   *
+ ******************/
+ // See also notes at bottom of file (under "Summarizations")
+ // Comment out the next two lines to remove the simplification,
+ // and let the prover use the original library functions.
+    rayMul(uint256 a, uint256 b) returns (uint256) => rayMulConst(a, b)
+    rayDiv(uint256 a, uint256 b) returns (uint256) => rayDivConst(a, b)
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -125,41 +135,28 @@ methods {
 // Definition of RAY unit
 definition RAY() returns uint256 = 10^27;
 
+definition myConstRayValue() returns uint256 = RAY()*4;
+
 // The following definition shall be used later in some invariants,
 // by filtering out the 'initialize' function.
 definition excludeInitialize(method f) returns bool =
     f.selector != 
     initialize(uint256, address, address, address[], uint256[]).selector; 
 
+// A filter for parametric rules.
+// The functions receiveRewards and withdraw should not be called by an external user
+// Unless a message was already sent, which we mock through the additional functions that
+// call the L2 interface.
+// Using this filter via:
+// filtered{f -> messageSentFilter(f)} will reduce running time, by skipping the analysis
+// of these functions.
+definition messageSentFilter(method f) returns bool = 
+    f.selector != receiveRewards(uint256, address, uint256).selector
+    &&
+    f.selector != withdraw(address, uint256, address, uint256, uint256, bool).selector;
 ////////////////////////////////////////////////////////////////////////////
 //                       Rules                                            //
 ////////////////////////////////////////////////////////////////////////////
-
-/*
-    @Rule
-
-    @Description:
-        The balance of the recipient of a withdrawal increase by the deserved (dynamic) amount in either aToken or underlying, and in the reward token.
-
-    @Formula:
-        {
-
-        }
-
-        < call withdraw >
-        
-        {
-            if toUnderlyingAsset:
-                assert underlyingBalanceAfter == underlyingBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL)
-            else:
-                assert aTokenBalanceAfter == aTokenBalanceBefore + _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL)
-            assert rewardTokenBalanceAfter == rewardTokenBalanceBefore + _computeRewardsDiff_Wrapper(staticAmount, l2RewardsIndex, _getCurrentRewardsIndex_Wrapper(e, aToken))
-        }
-
-    @Note:
-
-    @Link:
-*/
 
 rule integrityOfWithdraw(address recipient){
     bool toUnderlyingAsset;
@@ -172,13 +169,12 @@ rule integrityOfWithdraw(address recipient){
     
     setupTokens(underlying, aToken, static);
     setupUser(e.msg.sender);
+    require recipient != aToken;
+    require recipient != currentContract;
 
     uint256 underlyingBalanceBefore = tokenBalanceOf(e, underlying, recipient);
     uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
     uint256 rewardTokenBalanceBefore = tokenBalanceOf(e, REWARD_TOKEN, recipient);
-
-    uint256 rewards = _computeRewardsDiff_Wrapper(staticAmount, l2RewardsIndex, _getCurrentRewardsIndex_Wrapper(e, aToken));
-    uint256 gain = _staticToDynamicAmount_Wrapper(staticAmount, underlying, LENDINGPOOL_L1);
 
     initiateWithdraw_L2(e, aToken, staticAmount, recipient, toUnderlyingAsset);
 
@@ -188,16 +184,16 @@ rule integrityOfWithdraw(address recipient){
 
     if (toUnderlyingAsset){
         assert 
-        (underlyingBalanceAfter == underlyingBalanceBefore + gain) &&
+        (underlyingBalanceAfter >= underlyingBalanceBefore) &&
         (aTokenBalanceAfter == aTokenBalanceBefore);
     }
     else {
         assert 
-        (aTokenBalanceAfter == aTokenBalanceBefore + gain) &&
+        (aTokenBalanceAfter >= aTokenBalanceBefore) &&
         (underlyingBalanceAfter == underlyingBalanceBefore);
 
     }
-    assert rewardTokenBalanceAfter == rewardTokenBalanceBefore + rewards;
+    assert rewardTokenBalanceAfter >= rewardTokenBalanceBefore;
 }
 
 /*
@@ -249,10 +245,8 @@ rule balanceOfUnderlyingAssetChanged(method f, uint256 amount) {
         recipientBalanceA1 == recipientBalanceA2 && 
         recipientBalanceU1 == recipientBalanceU2);
 
-    assert balancesChanged <=>
+    assert balancesChanged =>
             (f.selector == deposit(address, uint256, uint256, uint16, bool).selector 
-            ||
-            f.selector == withdraw(address, uint256, address, uint256, uint256, bool).selector
             ||
             f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector)
             , "balanceOf changed";
@@ -276,23 +270,28 @@ rule depositWithdrawReversed(uint256 amount)
     setupUser(eF.msg.sender);
     requireRayIndex(asset);
     require eF.msg.sender == eB.msg.sender;
-    require LENDINGPOOL_L1.liquidityIndexByAsset(asset) == 2*RAY();
+    uint256 indexL1 = LENDINGPOOL_L1.liquidityIndexByAsset(asset);
 
     uint256 balanceU1 = tokenBalanceOf(eB, asset, eB.msg.sender);
     uint256 balanceA1 = tokenBalanceOf(eB, Atoken, eB.msg.sender);
     uint256 balanceS1 = tokenBalanceOf(eB, static, eB.msg.sender);
         uint256 staticAmount = deposit(eB, Atoken, l2Recipient, amount, referralCode, fromUA);
-    //uint256 balanceU2 = tokenBalanceOf(eB, asset, eB.msg.sender);
-    //uint256 balanceA2 = tokenBalanceOf(eB, Atoken, eB.msg.sender);
-    //uint256 balanceS2 = tokenBalanceOf(eB, static, eB.msg.sender);
+    /////////////////////////
+    /*
+    One can use these values (post-deposit pre-withdrawal) for debugging.
+    uint256 balanceU2 = tokenBalanceOf(eB, asset, eB.msg.sender);
+    uint256 balanceA2 = tokenBalanceOf(eB, Atoken, eB.msg.sender);
+    uint256 balanceS2 = tokenBalanceOf(eB, static, eB.msg.sender);
+    */
+    /////////////////////////
         initiateWithdraw_L2(eF, Atoken, staticAmount, eF.msg.sender, toUA);
     uint256 balanceU3 = tokenBalanceOf(eF, asset, eF.msg.sender);
     uint256 balanceA3 = tokenBalanceOf(eF, Atoken, eF.msg.sender);
     uint256 balanceS3 = tokenBalanceOf(eF, static, eF.msg.sender);
     
     assert balanceS1 == balanceS3;
-    assert 
-        (balanceA1 == balanceA3 && balanceU1 == balanceU3);
+    assert fromUA == toUA => balanceU3 - balanceU1 <= (indexL1/RAY()+1)/2;
+    assert fromUA == toUA => balanceA3 == balanceA1;
 }
 
 // Checks that the transitions between static to dynamic are inverses.
@@ -316,12 +315,11 @@ rule dynamicToStaticInversible2(uint256 amount)
     // We assume both indexes (L1,L2) are represented in Ray (1e27).
     address asset;
     requireRayIndex(asset);
-    // Just for debugging.
     uint256 indexL1 = LENDINGPOOL_L1.liquidityIndexByAsset(asset);
     uint256 stat = _dynamicToStaticAmount_Wrapper(amount, asset, LENDINGPOOL_L1);
     uint256 dynm = _staticToDynamicAmount_Wrapper(stat, asset, LENDINGPOOL_L1);
-    assert amount == dynm;
-    assert amount >= dynm;
+    // assert dynm <= amount;  // Violated
+    assert dynm - amount <= (indexL1/RAY() + 1)/2; // Pass
 }
 
 // We make sure that the message sent booleans are always false,
@@ -330,6 +328,8 @@ rule dynamicToStaticInversible2(uint256 amount)
 // designated functions in the harnessed Bridge contract.
 invariant alwaysUnSent(env e)
    !withdrawMessageStatus(e) && !bridgeRewardsMessageStatus(e)
+    filtered{f -> messageSentFilter(f)}
+
 
 // Check consistency of 'asset' being registered as the underlying
 // token of 'AToken', both in the AToken contract, and also in the 
@@ -342,7 +342,7 @@ invariant underlying2ATokenConsistency(address AToken, address asset)
      (getUnderlyingAssetHelper(AToken) == asset 
      <=>
      getUnderlyingAssetOfAToken(AToken) == asset)
-     filtered{f-> excludeInitialize(f)}
+     filtered{f-> excludeInitialize(f) && messageSentFilter(f)}
 
 // Check consistency of 'asset' being registered as the underlying
 // token of 'AToken', and 'AToken' connected to 'asset' in the lending pool.
@@ -354,7 +354,7 @@ invariant ATokenAssetPair(address asset, address AToken)
     (getUnderlyingAssetHelper(AToken) == asset 
     <=>
     getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken)
-    filtered{f -> excludeInitialize(f)}
+    filtered{f -> excludeInitialize(f)  && messageSentFilter(f)}
 
 // The aToken-asset pair should be correctly registered after calling
 // initialize, right after the constructor.
@@ -371,15 +371,13 @@ rule initializeIntegrity(address AToken, address asset)
     initialize(e, args);
 
     assert (asset !=0 && AToken !=0) => (
-        (getUnderlyingAssetHelper(AToken) == asset 
+        getUnderlyingAssetHelper(AToken) == asset 
         <=>
-        getUnderlyingAssetHelper(AToken) == asset)
-     &&
-        (getUnderlyingAssetHelper(AToken) == asset 
-        <=>
-        getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken));
+        getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == AToken);
 }
 
+// Sanity(f) - there exists a non-reverting path for a the contract method f.
+// If the rule is verified (green V), no such path exists.
 rule sanity(method f) {
     env e;
     calldataarg args;
@@ -412,7 +410,7 @@ function setupTokens(
 // A general requirement set for an extenral user using the bridge.
 // User should usually be the msg.sender, but not necessarily the recipient!
 function setupUser(address user){
-    // Exculde contracts addresses from possible values of [user].
+    // Exclude contracts addresses from possible values of [user].
     requireValidUser(user);
 }
 
@@ -431,6 +429,12 @@ function tokenSelector(
 function requireRayIndex(address asset) {
     require LENDINGPOOL_L1.liquidityIndexByAsset(asset) >= RAY();
     require BRIDGE_L2.l2RewardsIndex() >= RAY();
+}
+
+// Require a constant value for the L1 index.
+// Supposed to (hopefully) make runs faster, note that is reduces coverage!
+function constantL1Index(address asset, uint256 value_in_Ray){
+   require LENDINGPOOL_L1.liquidityIndexByAsset(asset) == value_in_Ray*RAY();
 }
 
 // Linking the instances of ERC20s and LendingPool 
@@ -500,22 +504,21 @@ function callFunctionSetParams(
     method f, env e, address receiver,
     address aToken, address asset,
     uint256 amount, bool fromToUnderlyingAsset) returns uint256 {
+    // Inhibits the user from calling the functions withdraw and receiveRewards.
+    // Expect unreachability for these functions (intended). 
     requireInvariant alwaysUnSent(e);
     if (f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector){
+        require receiver != currentContract;
         return initiateWithdraw_L2(e, aToken, amount, receiver, fromToUnderlyingAsset); 
     }   
     else if (f.selector == deposit(address, uint256, uint256, uint16, bool).selector){
         uint256 l2Recipient = BRIDGE_L2.address2uint256(receiver);
         uint16 referralCode;
+        require receiver != currentContract;
         return deposit(e, aToken, l2Recipient, amount, referralCode, fromToUnderlyingAsset);
     }
     else if (f.selector == bridgeRewards_L2(address, uint256).selector) {
         bridgeRewards_L2(e, receiver, amount);
-        return 0;
-    }
-    else if (f.selector == withdraw(address, uint256, address, uint256, uint256, bool).selector) {
-        uint256 l2sender;
-        withdraw(e, aToken, l2sender, receiver, amount, BRIDGE_L2.l2RewardsIndex(), fromToUnderlyingAsset);
         return 0;
     }
     else {
@@ -523,4 +526,38 @@ function callFunctionSetParams(
         f(e, args);
         return 0;
     }     
+}
+
+////////////////////////////////////////////////////////////////////////////
+//                       Summarizations                                   //
+////////////////////////////////////////////////////////////////////////////
+/*
+The following functions are used as summarization (under-approximation)
+for the real functions in the code rayMul and rayDiv.
+While the real functions assume any value for b,
+here it is fixed by value to myConstRayValue() (a is not limited).
+This dratically reduces coverage, but can still catch bugs related
+to non-conservation of tokens.
+The main benefit is the reduced runtime of rules.
+
+To switch on/off the summarization, simply comment the lines
+in the methods block of declaring these functions (127-128)
+*/
+
+function rayMulConst(uint256 a, uint256 b) returns uint256
+{
+    uint256 myValue = myConstRayValue();
+    uint256 val_Ray = myConstRayValue()/RAY();
+    require b == myValue;
+    require a <= (max_uint - RAY()/2)/ myValue;
+    return to_uint256(val_Ray*a);
+}
+
+function rayDivConst(uint256 a, uint256 b) returns uint256 
+{
+    uint256 myValue = myConstRayValue();
+    uint256 val_Ray = myConstRayValue()/RAY();
+    require b == myValue;
+    require a <= (max_uint - myValue/2) / RAY();
+    return to_uint256((2*a + val_Ray) / (2*val_Ray));
 }

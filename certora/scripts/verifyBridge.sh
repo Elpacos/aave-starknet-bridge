@@ -23,12 +23,12 @@ certoraRun certora/harness/BridgeHarness.sol \
                     BridgeL2Harness:REW_AAVE=DummyERC20RewardToken \
             --solc solc8.10 \
             --optimistic_loop \
-            --loop_iter 9 \
+            --loop_iter 2 \
             --send_only \
             --staging \
             --rule_sanity basic \
-            --rule balanceOfUnderlyingAssetChanged \
-            --msg "AAVE S-Net Bridge balanceOfUnderlyingAssetChanged"
+            --rule dynamicToStaticInversible2 \
+            --msg "AAVE S-Net Bridge dynamicToStaticInversible2"
 
 # The first line (#6) specifies all the contracts that are being called through the bridge.sol file.
 # This is a declaration of multiple contracts for the verification context.
