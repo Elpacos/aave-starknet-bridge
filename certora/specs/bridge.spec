@@ -225,8 +225,8 @@ rule integrityOfWithdraw(address recipient){
 }
 
 // If a balance of tokens changed, then deposit or withdrawal must have been called.
-rule balanceOfUnderlyingAssetChanged(method f, uint256 amount) {
-filtered{f -> messageSentFilter(f)}
+rule balanceOfUnderlyingAssetChanged(method f, uint256 amount)
+filtered{f -> messageSentFilter(f)} {
     env e;    
     address asset;
     address AToken;
