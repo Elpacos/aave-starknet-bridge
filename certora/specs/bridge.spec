@@ -135,6 +135,11 @@ methods {
 // Definition of RAY unit
 definition RAY() returns uint256 = 10^27;
 
+// Used for the Ray math summarization.
+// Effectively sets the liquidity index in L1 to be a constant, given
+// by the following value.
+// Note: if the summarization is not used, i.e. they are commented out,
+// this value has no use.
 definition myConstRayValue() returns uint256 = RAY()*4;
 
 // The following definition shall be used later in some invariants,
@@ -154,10 +159,33 @@ definition messageSentFilter(method f) returns bool =
     f.selector != receiveRewards(uint256, address, uint256).selector
     &&
     f.selector != withdraw(address, uint256, address, uint256, uint256, bool).selector;
+
 ////////////////////////////////////////////////////////////////////////////
 //                       Rules                                            //
 ////////////////////////////////////////////////////////////////////////////
 
+/*
+    @Rule - a template for rule description:
+
+    @Description: Significance of rule, property
+        
+
+    @Formula:
+        {
+            require something (pre-condition)
+        }
+            < call any function or specific function >
+        {
+            assert post-condition
+        }
+
+    @Note:
+        Some notes about requirements or special consideration of the rule.
+    @Link:
+        Link to last verification report run of the rule.
+*/
+
+// Checks basic properties of withdrawal.
 rule integrityOfWithdraw(address recipient){
     bool toUnderlyingAsset;
     uint256 staticAmount; 
@@ -196,30 +224,9 @@ rule integrityOfWithdraw(address recipient){
     assert rewardTokenBalanceAfter >= rewardTokenBalanceBefore;
 }
 
-/*
-    @Rule
-
-    @Description:
-        Balance of underlying asset change iff deposit/withdraw was called 
-
-    @Formula:
-        {
-
-        }
-        < call any function >
-        {
-            underlyingBalanceAfter == underlyingBalanceBefore => < any function besides deposit or withdraw was called >
-            < Neither deposit nor withdraw were called > => underlyingBalanceAfter == underlyingBalanceBefore
-        }
-
-    @Note:
-        Although withdraw() shouldn't be called by an external user,
-        it does change the underlying balance, therefore we include it 
-        in the assert statement.
-    @Link:
-*/
-
+// If a balance of tokens changed, then deposit or withdrawal must have been called.
 rule balanceOfUnderlyingAssetChanged(method f, uint256 amount) {
+filtered{f -> messageSentFilter(f)}
     env e;    
     address asset;
     address AToken;
@@ -254,7 +261,7 @@ rule balanceOfUnderlyingAssetChanged(method f, uint256 amount) {
 
 // A call to deposit and a subsequent call to withdraw with the same amount of 
 // staticATokens received, should yield the same original balance for the user.
-// Rule violated, since staticToDynamic is not inversible with dyanmicToStatic.
+// For underlying tokens, the condition is modified by a bound, since staticToDynamic is not inversible with dyanmicToStatic.
 rule depositWithdrawReversed(uint256 amount)
 {
     env eB; env eF;
@@ -380,8 +387,15 @@ rule initializeIntegrity(address AToken, address asset)
 // If the rule is verified (green V), no such path exists.
 rule sanity(method f) {
     env e;
-    calldataarg args;
-    f(e, args);
+    address receiver;
+    address aToken;
+    address asset;
+    address static;
+    uint256 amount; 
+    bool fromToUnderlyingAsset;
+    setupTokens(asset, aToken, static);
+    setupUser(e.msg.sender);
+    callFunctionSetParams(f, e, receiver, aToken, asset, amount, fromToUnderlyingAsset);
     assert false;
 }
 
