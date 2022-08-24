@@ -29,7 +29,6 @@ audited, might contain bugs and should not be used in production.
   - [Build the cairo files](#build-cairo-files)
   - [Start testnets](#start-testnets)
   - [Run tests](#run-tests)
-  - [Deployment](#deployment)
 
 ## Introduction
 
@@ -40,9 +39,9 @@ earn high yield. That's why we brought to you an initial phase of the Aave <>
 Starknet integration allowing deposit/withdrawal on Aave Ethereum by
 exclusively transacting on Starknet.
 
-The bridge allows users to deposit and withdraw their [aTokens](https://docs.aave.com/developers/tokens/atoken) on StarkNet and get
+The bridge allows users to deposit and withdraw their [aTokens](https://docs.aave.com/developers/tokens/atoken), and only `aTokens`, on StarkNet and get
 `static_a_tokens` - wrappers converting balance-increasing `aTokens` into
-exchange-rate-increasing `static_a_tokens`.
+exchange-rate-increasing `static_a_tokens`. We assume that L1 tokens approved by the bridge are pre-validated tokens, and that they are not deflationary.
 
 The bridge is also shaped for liquidity providers who are able to assume the
 Ethereum gas cost of deposits and withdrawals as they transact large enough
@@ -268,12 +267,13 @@ yarn testnet:l1
 
 The project is tested using [hardhat](https://hardhat.org/), the [starknet
 hardhat plugin](https://github.com/Shard-Labs/starknet-hardhat-plugin) and
-[starknet-devnet](https://github.com/Shard-Labs/starknet-devnet).
+[starknet-devnet](https://github.com/Shard-Labs/starknet-devnet). We created a Docker Compose file to run tests easily: we start L1 and L2 test networks in two separate containers and run the tests from a third one. To run all tests, simply run the following commands:
 
 ```
+docker compose up --build
+docker exec -ti $(docker ps -f name=test-runner -q) bash
 yarn test
 ```
-
 
 ### Deployment
 
@@ -282,6 +282,7 @@ First make sure to set the aTokens addresses to be approved on the bridge as wel
 ```bash
 yarn deploy-bridge:testnet #deploys bridge on l1 & l2 testnets
 ```
+
 Contributors
 
 <a href = "https://github.com/aave-starknet-project/aave-starknet-bridge/graphs/contributors">

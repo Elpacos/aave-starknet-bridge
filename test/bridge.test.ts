@@ -7,20 +7,23 @@ import {
   DAI_WHALE,
   USDC_WHALE,
   EMISSION_MANAGER,
+  DAI,
+  USDC,
 } from "./../constants/addresses";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import chai, { expect } from "chai";
 import { Contract, ContractFactory, providers, BigNumber } from "ethers";
-import hre, { starknet, network, ethers } from "hardhat";
+import hre, { starknet, ethers } from "hardhat";
 import {
   StarknetContractFactory,
   StarknetContract,
-  HttpNetworkConfig,
+  HardhatUserConfig,
   Account,
   StringMap,
 } from "hardhat/types";
 import { solidity } from "ethereum-waffle";
-
+import config from "../hardhat.config";
+import "./wadraymath";
 import { TIMEOUT } from "./constants";
 import { expectAddressEquality, uintFromParts } from "./utils";
 
@@ -33,11 +36,12 @@ const DAI_UNIT = 1000n * BigInt(10 ** 18);
 const USDC_UNIT = 1000n * BigInt(10 ** 6);
 const daiAmount = 300n * DAI_UNIT;
 const usdcAmount = 300n * USDC_UNIT;
-
 describe("Bridge", async function () {
   this.timeout(TIMEOUT);
 
-  const networkUrl: string = (network.config as HttpNetworkConfig).url;
+  const networkUrl =
+    (config as HardhatUserConfig).networks?.l1_testnet?.url ||
+    "http://localhost:8545";
 
   // users
   let l1user: SignerWithAddress;
@@ -51,6 +55,7 @@ describe("Bridge", async function () {
   let emissionManager: providers.JsonRpcSigner;
 
   // misk
+  let provider: any;
   let blockNumberDai: number;
   let blockNumberUsdc: number;
   let txDai: any;
@@ -185,7 +190,7 @@ describe("Bridge", async function () {
       await aUsdc.UNDERLYING_ASSET_ADDRESS()
     );
 
-    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
+    provider = new ethers.providers.JsonRpcProvider(networkUrl);
     daiWhale = provider.getSigner(DAI_WHALE);
     usdcWhale = provider.getSigner(USDC_WHALE);
     stkaaveWhale = provider.getSigner(STKAAVE_WHALE);
@@ -419,7 +424,12 @@ describe("Bridge", async function () {
     // approve L1 bridge with max uint256 amount
     await dai.connect(l1user).approve(l1Bridge.address, MAX_UINT256);
     await usdc.connect(l1user).approve(l1Bridge.address, MAX_UINT256);
-
+    const daiReserveNormalizedIncome = await pool.getReserveNormalizedIncome(
+      DAI
+    );
+    const usdcReserveNormalizedIncome = await pool.getReserveNormalizedIncome(
+      USDC
+    );
     // l1user deposits 30 dai and 40 usdc on L1 for l2user on L2
     l1InitialDaiBalance = BigInt(await dai.balanceOf(l1user.address));
     txDai = await l1Bridge
@@ -432,6 +442,7 @@ describe("Bridge", async function () {
         true
       );
     blockNumberDai = txDai.blockNumber;
+
     expect(await dai.balanceOf(l1user.address)).to.equal(
       l1InitialDaiBalance - 30n * DAI_UNIT
     );
@@ -446,6 +457,7 @@ describe("Bridge", async function () {
         0,
         true
       );
+
     blockNumberUsdc = txUsdc.blockNumber;
     expect(await usdc.balanceOf(l1user.address)).to.equal(
       l1InitialUsdcBalance - 40n * USDC_UNIT
@@ -485,11 +497,15 @@ describe("Bridge", async function () {
     l2staticAUsdcBalance = await l2StaticAUsdc.call("balanceOf", {
       account: BigInt(l2user.starknetContract.address),
     });
+
+    const daiBalance = BigNumber.from(30n * DAI_UNIT);
+    const usdcBalance = BigNumber.from(40n * DAI_UNIT);
+
     expect(l2staticADaiBalance["balance"]["low"]).to.be.lte(
-      BigNumber.from(30n * DAI_UNIT)
+      daiBalance.rayDiv(daiReserveNormalizedIncome)
     );
     expect(l2staticAUsdcBalance["balance"]["low"]).to.be.lte(
-      BigNumber.from(40n * USDC_UNIT)
+      usdcBalance.rayDiv(usdcReserveNormalizedIncome)
     );
     expect(await l2StaticADai.call("get_last_update", {})).to.deep.equal({
       block_number: { high: 0n, low: BigInt(blockNumberDai) },
@@ -503,7 +519,12 @@ describe("Bridge", async function () {
     // approve L1 bridge with max uint256 amount
     await aDai.connect(l1user).approve(l1Bridge.address, MAX_UINT256);
     await aUsdc.connect(l1user).approve(l1Bridge.address, MAX_UINT256);
-
+    const daiReserveNormalizedIncome = await pool.getReserveNormalizedIncome(
+      DAI
+    );
+    const usdcReserveNormalizedIncome = await pool.getReserveNormalizedIncome(
+      USDC
+    );
     // l1user deposits 30 aDai and 40 aUsdc on L1 for l2user on L2
     l1InitialADaiBalance = BigInt(await aDai.balanceOf(l1user.address));
     txDai = await l1Bridge
@@ -516,6 +537,7 @@ describe("Bridge", async function () {
         false
       );
     blockNumberDai = txDai.blockNumber;
+
     expect(BigNumber.from(l1InitialADaiBalance - 30n * DAI_UNIT)).to.be.lte(
       await aDai.balanceOf(l1user.address)
     );
@@ -534,6 +556,29 @@ describe("Bridge", async function () {
     expect(BigNumber.from(l1InitialAUsdcBalance - 40n * USDC_UNIT)).to.be.lte(
       await aUsdc.balanceOf(l1user.address)
     );
+
+    //expected new balances on l2
+
+    const staticADaiBalanceBeforeDeposit = await l2StaticADai.call(
+      "balanceOf",
+      {
+        account: BigInt(l2user.starknetContract.address),
+      }
+    );
+    const staticAUsdcBalanceBeforeDeposit = await l2StaticAUsdc.call(
+      "balanceOf",
+      {
+        account: BigInt(l2user.starknetContract.address),
+      }
+    );
+
+    const expectedaDaiBalanceOnL2 = BigNumber.from(30n * DAI_UNIT)
+      .rayDiv(daiReserveNormalizedIncome)
+      .add(staticADaiBalanceBeforeDeposit["balance"]["low"]);
+
+    const expectedaUsdcBalanceOnL2 = BigNumber.from(40n * DAI_UNIT)
+      .rayDiv(usdcReserveNormalizedIncome)
+      .add(staticAUsdcBalanceBeforeDeposit["balance"]["low"]);
 
     const flushL1Response = await starknet.devnet.flush();
     const flushL1Messages = flushL1Response.consumed_messages.from_l1;
@@ -558,19 +603,20 @@ describe("Bridge", async function () {
       mockStarknetMessagingAddress
     );
 
-    // check balance and last update of L2 tokens
     l2staticADaiBalance = await l2StaticADai.call("balanceOf", {
       account: BigInt(l2user.starknetContract.address),
     });
     l2staticAUsdcBalance = await l2StaticAUsdc.call("balanceOf", {
       account: BigInt(l2user.starknetContract.address),
     });
+
     expect(l2staticADaiBalance["balance"]["low"]).to.be.lte(
-      BigNumber.from(2n * 30n * DAI_UNIT)
+      expectedaDaiBalanceOnL2
     );
     expect(l2staticAUsdcBalance["balance"]["low"]).to.be.lte(
-      BigNumber.from(2n * 40n * USDC_UNIT)
+      expectedaUsdcBalanceOnL2
     );
+
     expect(await l2StaticADai.call("get_last_update", {})).to.deep.equal({
       block_number: { high: 0n, low: BigInt(blockNumberDai) },
     });
@@ -580,11 +626,19 @@ describe("Bridge", async function () {
   });
 
   it("jump into the future", async () => {
-    await network.provider.send("evm_increaseTime", [31536000]); // one year in seconds
-    await network.provider.send("evm_mine");
+    await provider.send("evm_increaseTime", [31536000]); // one year in seconds
+    await provider.send("evm_mine");
   });
 
   it("withdraw aDai and aUsdc to L1 user", async () => {
+    // get balance of L2 tokens before message consumption
+    let l2staticADaiBalanceBefore = await l2StaticADai.call("balanceOf", {
+      account: BigInt(l2user.starknetContract.address),
+    });
+    let l2staticAUsdcBalanceBefore = await l2StaticAUsdc.call("balanceOf", {
+      account: BigInt(l2user.starknetContract.address),
+    });
+
     // withdraw some tokens from L2
     await l2user.invoke(l2Bridge, "initiate_withdraw", {
       l2_token: BigInt(l2StaticADai.address),
@@ -670,11 +724,13 @@ describe("Bridge", async function () {
     l2staticAUsdcBalance = await l2StaticAUsdc.call("balanceOf", {
       account: BigInt(l2user.starknetContract.address),
     });
-    expect(BigNumber.from(27n * DAI_UNIT)).to.be.lte(
-      l2staticADaiBalance["balance"]["low"]
+    expect(BigNumber.from(27n * DAI_UNIT)).to.equal(
+      l2staticADaiBalanceBefore["balance"]["low"] -
+        l2staticADaiBalance["balance"]["low"]
     );
-    expect(BigNumber.from(37n * USDC_UNIT)).to.be.lte(
-      l2staticAUsdcBalance["balance"]["low"]
+    expect(BigNumber.from(37n * USDC_UNIT)).to.equal(
+      l2staticAUsdcBalanceBefore["balance"]["low"] -
+        l2staticAUsdcBalance["balance"]["low"]
     );
   });
 
@@ -688,7 +744,7 @@ describe("Bridge", async function () {
     await l2user.invoke(l2Bridge, "initiate_withdraw", {
       l2_token: BigInt(l2StaticAUsdc.address),
       l1_recipient: BigInt(l1user.address),
-      amount: { high: 0n, low: 37n * USDC_UNIT },
+      amount: { high: 0n, low: 27n * USDC_UNIT },
     });
 
     // flush L2 messages to be consumed by L1
@@ -723,19 +779,11 @@ describe("Bridge", async function () {
         aUsdc.address,
         l2user.starknetContract.address,
         l1user.address,
-        37n * USDC_UNIT,
+        27n * USDC_UNIT,
         l2RewardsIndexUsdc,
         true
       );
     blockNumberUsdc = txUsdc.blockNumber;
-
-    // check that tokens have been transfered to l1user
-    expect(await dai.balanceOf(l1user.address)).to.be.lte(
-      BigNumber.from(l1InitialDaiBalance)
-    );
-    expect(BigNumber.from(l1InitialUsdcBalance)).to.be.lte(
-      await usdc.balanceOf(l1user.address)
-    );
 
     // flush L1 messages to be consumed by L2
     const flushL1Response = await starknet.devnet.flush();
@@ -750,6 +798,54 @@ describe("Bridge", async function () {
     expect(await l2StaticAUsdc.call("get_last_update", {})).to.deep.equal({
       block_number: { high: 0n, low: BigInt(blockNumberUsdc) },
     });
+  });
+
+  it("reverts withdrawal when wrong l2rewards index is provided", async () => {
+    await l2user.invoke(l2Bridge, "initiate_withdraw", {
+      l2_token: BigInt(l2StaticAUsdc.address),
+      l1_recipient: BigInt(l1user.address),
+      amount: { high: 0n, low: 5n },
+    });
+
+    // flush L2 messages to be consumed by L1
+    const flushL2Response = await starknet.devnet.flush();
+    const flushL2Messages = flushL2Response.consumed_messages.from_l2;
+    expect(flushL2Response.consumed_messages.from_l1).to.be.empty;
+    expect(flushL2Messages).to.have.a.lengthOf(1);
+
+    const falseL2RewardsIndexUsdc = 7; //incorrect value
+    const correctL2RewardsIndexUsdc = uintFromParts(
+      flushL2Messages[0].payload[6],
+      flushL2Messages[0].payload[7]
+    );
+
+    await expect(
+      l1Bridge
+        .connect(l1user)
+        .withdraw(
+          aUsdc.address,
+          l2user.starknetContract.address,
+          l1user.address,
+          5,
+          falseL2RewardsIndexUsdc,
+          true
+        )
+    ).to.be.reverted;
+
+    txUsdc = await l1Bridge
+      .connect(l1user)
+      .withdraw(
+        aUsdc.address,
+        l2user.starknetContract.address,
+        l1user.address,
+        5,
+        correctL2RewardsIndexUsdc,
+        true
+      );
+
+    // flush L1 messages to be consumed by L2
+    const flushL1Response = await starknet.devnet.flush();
+    expect(flushL1Response.consumed_messages.from_l2).to.be.empty;
   });
 
   it("L2 user sends back reward accrued to L1 user", async () => {
@@ -798,6 +894,13 @@ describe("Bridge", async function () {
     const flushL2Messages = flushL2Response.consumed_messages.from_l2;
     expect(flushL2Response.consumed_messages.from_l1).to.be.empty;
     expect(flushL2Messages).to.have.a.lengthOf(1);
+
+    //check that there are enough rewards on l1 bridge
+    const bridgePendingRewards = await incentives.getRewardsBalance(
+      [A_DAI, A_USDC],
+      l1Bridge.address
+    );
+    expect(bridgePendingRewards).to.be.gte(l2ClaimedRewards);
 
     // call recieveRewards on L1 to consume messages from L2
     const rewardsBalanceBeforeClaim = BigInt(

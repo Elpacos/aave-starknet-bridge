@@ -1,8 +1,10 @@
 import { StarknetContract, Account } from "hardhat/types";
 import { starknet } from "hardhat";
+import { BigNumber } from "ethers";
 import { TIMEOUT, L1_TEST_ADDRESS } from "./constants";
 import { expect } from "chai";
-import { wadToRay, decimalToWad } from "./rayMath";
+import "./wadraymath";
+import { WAD } from "./wadraymath";
 
 describe("static_a_token", function () {
   this.timeout(TIMEOUT);
@@ -81,11 +83,12 @@ describe("static_a_token", function () {
   });
 
   it("allows bridge to mint", async () => {
+    const mint_amount = BigNumber.from("100").mul(WAD).toString();
     await bridge.invoke(token, "mint", {
       recipient: BigInt(user1.starknetContract.address),
       amount: {
         high: 0n,
-        low: BigInt(decimalToWad(100)),
+        low: BigInt(mint_amount),
       },
     });
 
@@ -93,16 +96,17 @@ describe("static_a_token", function () {
 
     expect(totalSupply).to.deep.equal({
       high: 0n,
-      low: BigInt(decimalToWad(100)),
+      low: BigInt(mint_amount),
     });
   });
 
   it("allows bridge to burn", async () => {
+    const burn_amount = BigNumber.from("50").mul(WAD).toString();
     await bridge.invoke(token, "burn", {
       account: BigInt(user1.starknetContract.address),
       amount: {
         high: 0n,
-        low: BigInt(decimalToWad(50)),
+        low: BigInt(burn_amount),
       },
     });
 
@@ -112,17 +116,18 @@ describe("static_a_token", function () {
 
     expect(balance).to.deep.equal({
       high: 0n,
-      low: BigInt(decimalToWad(50)),
+      low: BigInt(burn_amount),
     });
   });
 
   it("disallows non-bridge to mint", async () => {
+    const mint_amount = BigNumber.from("100").mul(WAD).toString();
     try {
       await user1.invoke(token, "mint", {
         recipient: BigInt(user1.starknetContract.address),
         amount: {
           high: 0n,
-          low: BigInt(decimalToWad(100)),
+          low: BigInt(mint_amount),
         },
       });
     } catch (err: any) {
@@ -131,12 +136,13 @@ describe("static_a_token", function () {
   });
 
   it("disallows non-bridge to burn", async () => {
+    const burn_amount = BigNumber.from("100").mul(WAD).toString();
     try {
       await user1.invoke(token, "burn", {
         account: BigInt(user1.starknetContract.address),
         amount: {
           high: 0n,
-          low: BigInt(decimalToWad(100)),
+          low: BigInt(burn_amount),
         },
       });
     } catch (err: any) {
@@ -145,15 +151,16 @@ describe("static_a_token", function () {
   });
 
   it("allows bridge to update rewards index", async () => {
+    const updated_rewards_index_value = BigNumber.from("2").mul(WAD).toString();
     await bridge.invoke(token, "push_rewards_index", {
       block_number: {
         high: 0,
         low: 1,
       },
       rewards_index: {
-        ray: {
+        wad: {
           high: 0,
-          low: BigInt(decimalToWad(2)),
+          low: BigInt(updated_rewards_index_value),
         },
       },
     });
@@ -161,14 +168,15 @@ describe("static_a_token", function () {
     const { rewards_index } = await token.call("get_rewards_index");
 
     expect(rewards_index).to.deep.equal({
-      ray: {
+      wad: {
         high: 0n,
-        low: BigInt(decimalToWad(2)),
+        low: BigInt(updated_rewards_index_value),
       },
     });
   });
 
   it("disallows random account from updating rewards index", async () => {
+    const rewards_index_value = BigNumber.from("2").mul(WAD).toString();
     try {
       await user1.invoke(token, "push_rewards_index", {
         block_number: {
@@ -176,9 +184,9 @@ describe("static_a_token", function () {
           low: 2,
         },
         rewards_index: {
-          ray: {
+          wad: {
             high: 0n,
-            low: BigInt(decimalToWad(2)),
+            low: BigInt(rewards_index_value),
           },
         },
       });
@@ -195,7 +203,7 @@ describe("static_a_token", function () {
           low: 3,
         },
         rewards_index: {
-          ray: {
+          wad: {
             high: 0,
             low: 0,
           },
@@ -208,15 +216,16 @@ describe("static_a_token", function () {
 
   it("rejects old block numbers", async () => {
     try {
+      const rewards_index_value = BigNumber.from("2").mul(WAD).toString();
       await bridge.invoke(token, "push_rewards_index", {
         block_number: {
           high: 0,
           low: 0,
         },
         rewards_index: {
-          ray: {
+          wad: {
             high: 0,
-            low: BigInt(decimalToWad(2)),
+            low: BigInt(rewards_index_value),
           },
         },
       });
@@ -226,6 +235,7 @@ describe("static_a_token", function () {
   });
 
   it("returns correct user pending rewards before claim", async () => {
+    const claimable_rewards_amount = BigNumber.from("100").mul(WAD).toString();
     const userClaimableRewards = await token.call(
       "get_user_claimable_rewards",
       {
@@ -233,10 +243,10 @@ describe("static_a_token", function () {
       }
     );
 
-    //expect claimable rewards amount in RAY
+    //expect claimable rewards amount in WAD
     expect(userClaimableRewards.user_claimable_rewards).to.deep.equal({
       high: 0n,
-      low: BigInt(wadToRay(100)),
+      low: BigInt(claimable_rewards_amount),
     });
   });
 
@@ -309,14 +319,14 @@ describe("static_a_token", function () {
 
   it("keeps track of each user rewards index correctly", async () => {
     //after claim user1 should have the latest rewards index
-
+    const current_rewards_index_value = BigNumber.from("2").mul(WAD).toString();
     const user1RewardsIndex = await token.call("get_user_rewards_index", {
       user: BigInt(user1.starknetContract.address),
     });
 
     expect(user1RewardsIndex.user_rewards_index).to.deep.equal({
       high: 0n,
-      low: BigInt(decimalToWad(2)),
+      low: BigInt(current_rewards_index_value),
     });
 
     // user2 rewards index shouldn't be updated
@@ -348,7 +358,7 @@ describe("static_a_token", function () {
     await owner.invoke(token, "set_l2_bridge", {
       l2_bridge: BigInt(bridge.starknetContract.address),
     });
-
+    const updated_rewards_index_value = BigNumber.from("3").mul(WAD).toString();
     //Update the acc rewards per token first
     await bridge.invoke(token, "push_rewards_index", {
       block_number: {
@@ -356,9 +366,9 @@ describe("static_a_token", function () {
         low: 2,
       },
       rewards_index: {
-        ray: {
+        wad: {
           high: 0,
-          low: BigInt(decimalToWad(3)),
+          low: BigInt(updated_rewards_index_value),
         },
       },
     });
@@ -395,6 +405,8 @@ describe("static_a_token", function () {
       l2_bridge: BigInt(bridge.starknetContract.address),
     });
 
+    const updated_rewards_index_value = BigNumber.from("4").mul(WAD).toString();
+
     //To have a non null rewards amount, we update the rewards index
     await bridge.invoke(token, "push_rewards_index", {
       block_number: {
@@ -402,28 +414,30 @@ describe("static_a_token", function () {
         high: 3,
       },
       rewards_index: {
-        ray: {
+        wad: {
           high: 0,
-          low: BigInt(decimalToWad(4)),
+          low: BigInt(updated_rewards_index_value),
         },
       },
     });
-
+    const burn_amount = BigNumber.from("50").mul(WAD).toString();
     //burn all static_a_token of user on L2==>this is the same as calling init_withdraw on bridge
     await bridge.invoke(token, "burn", {
       account: BigInt(user1.starknetContract.address),
       amount: {
         high: 0n,
-        low: BigInt(decimalToWad(50)),
+        low: BigInt(burn_amount),
       },
     });
     /// check that the rewards index of the user gets updated when calling incentivized_erc20_before_token_transfer at the moment of the burn
     const userRewardsIndex = await token.call("get_user_rewards_index", {
       user: BigInt(user1.starknetContract.address),
     });
+
+    const current_rewards_index_value = BigNumber.from("4").mul(WAD).toString();
     expect(userRewardsIndex.user_rewards_index).to.deep.equal({
       high: 0n,
-      low: BigInt(decimalToWad(4)),
+      low: BigInt(current_rewards_index_value),
     });
 
     const { balance } = await token.call("balanceOf", {
@@ -441,10 +455,10 @@ describe("static_a_token", function () {
         user: BigInt(user1.starknetContract.address),
       }
     );
-
+    const claimable_amount = BigNumber.from("50").mul(WAD).toString();
     expect(user_claimable_rewards).to.deep.equal({
       high: 0n,
-      low: BigInt(wadToRay(50)),
+      low: BigInt(claimable_amount),
     });
   });
 });
