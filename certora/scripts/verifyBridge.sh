@@ -23,10 +23,12 @@ certoraRun certora/harness/BridgeHarness.sol \
                     BridgeL2Harness:REW_AAVE=DummyERC20RewardToken \
         --solc solc8.10 \
         --optimistic_loop \
-        --loop_iter 2 \
+        --loop_iter 3 \
         --send_only \
+        --rule sanity \
+        --rule_sanity \
         --cloud \
-        --msg "AAVE S-Net Bridge"
+        --msg "AAVE S-Net"
 
 # The first lines (#1-#11) specifies all the contracts that are being called through the BridgeHarness.sol file.
 # This is a declaration of multiple contracts for the verification context.
