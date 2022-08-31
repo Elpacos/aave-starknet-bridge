@@ -405,10 +405,8 @@ rule sanity(method f) {
 
 //MORE RULES
 
-invariant zeroAddressHasNoBalance(address asset, address Atoken. address static, env e)
-    tokenBalanceOf(e, asset, 0) == 0
-    tokenBalanceOf(e, Atoken, 0) == 0
-    tokenBalanceOf(e, static, 0) == 0
+invariant zeroAddressHasNoBalance(address asset, address Atoken, address static, env e)
+    tokenBalanceOf(e, asset, 0) == 0 && tokenBalanceOf(e, Atoken, 0) == 0 && tokenBalanceOf(e, static, 0) == 0
 
     {preserved {
         setupTokens(asset, Atoken, static);
@@ -429,7 +427,7 @@ rule onlyL2BridgeCanBurn(address user) {
     requireRayIndex(asset);
 
     uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();
-    STATIC_ATOKEN_A.burn(e, user, amount)
+    STATIC_ATOKEN_A.burn(e, user, amount);
     uint256 supplySAfter =  STATIC_ATOKEN_A.totalSupply();
    
     assert supplySAfter < supplySBefore => e.msg.sender == static;
@@ -449,7 +447,7 @@ rule onlyL2BridgeCanMint(address user) {
     requireRayIndex(asset);
 
     uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();
-    STATIC_ATOKEN_A.mint(e, user, amount)
+    STATIC_ATOKEN_A.mint(e, user, amount);
     uint256 supplySAfter =  STATIC_ATOKEN_A.totalSupply();
    
     assert supplySAfter > supplySBefore => e.msg.sender == static;
