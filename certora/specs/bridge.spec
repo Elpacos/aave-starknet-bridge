@@ -108,6 +108,7 @@ methods {
     BRIDGE_L2.l2RewardsIndex() returns (uint256) envfree
     BRIDGE_L2.getStaticATokenAddress(address) returns (address) envfree
     BRIDGE_L2.address2uint256(address) returns (uint256) envfree
+    BRIDGE_L2.getRewTokenAddress()
 
 /******************
  *     Tokens     *
@@ -117,6 +118,9 @@ methods {
     ATOKEN_B.UNDERLYING_ASSET_ADDRESS() returns (address) envfree  
     claimRewards(address) returns (uint256) => DISPATCHER(true)
     getRewTokenAddress() returns (address) => rewardToken()
+    STATIC_ATOKEN_A.burn(address, uint256)
+    STATIC_ATOKEN_A.mint(address, uint256)
+    STATIC_ATOKEN_A.totalSupply() envfree
 
 /******************
  *     Ray Math   *
@@ -399,6 +403,139 @@ rule sanity(method f) {
     assert false;
 }
 
+//MORE RULES
+
+invariant zeroAddressHasNoBalance(address asset, address Atoken. address static, env e)
+    tokenBalanceOf(e, asset, 0) == 0
+    tokenBalanceOf(e, Atoken, 0) == 0
+    tokenBalanceOf(e, static, 0) == 0
+
+    {preserved {
+        setupTokens(asset, Atoken, static);
+        requireRayIndex(asset);
+    }}
+
+rule onlyL2BridgeCanBurn(address user) {
+    env e;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 amount;
+    uint16 referralCode;
+    bool fromUA; // (deposit) from underlying asset
+    bool toUA; // (withdraw) to underlying asset
+
+    setupTokens(asset, Atoken, static);
+    requireRayIndex(asset);
+
+    uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();
+    STATIC_ATOKEN_A.burn(e, user, amount)
+    uint256 supplySAfter =  STATIC_ATOKEN_A.totalSupply();
+   
+    assert supplySAfter < supplySBefore => e.msg.sender == static;
+}
+
+rule onlyL2BridgeCanMint(address user) {
+    env e;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 amount;
+    uint16 referralCode;
+    bool fromUA; // (deposit) from underlying asset
+    bool toUA; // (withdraw) to underlying asset
+
+    setupTokens(asset, Atoken, static);
+    requireRayIndex(asset);
+
+    uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();
+    STATIC_ATOKEN_A.mint(e, user, amount)
+    uint256 supplySAfter =  STATIC_ATOKEN_A.totalSupply();
+   
+    assert supplySAfter > supplySBefore => e.msg.sender == static;
+}
+
+rule zerostaticATokenCantClaimRewards() {
+    env e;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+
+    setupTokens(asset, Atoken, static);
+    setupUser(e.msg.sender);
+    require tokenBalanceOf(static, e.msg.sender) == 0;
+
+    uint256 rewardBalanceBefore = tokenBalanceOf(e, BRIDGE_L2.getRewTokenAddress(), e.msg.sender);
+
+    claimRewardsStatic_L2(e, static);
+
+    uint256 rewardBalanceAfter = tokenBalanceOf(e, BRIDGE_L2.getRewTokenAddress(), e.msg.sender);
+
+    assert (rewardBalanceBefore == rewardBalanceAfter);
+}
+
+rule zerostaticATokenCantWithdrawAtokens() {
+    env e;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 amount; 
+    bool toUnderlyingAsset; 
+
+    setupTokens(asset, Atoken, static);
+    setupUser(e.msg.sender);
+    require tokenBalanceOf(static, e.msg.sender) == 0;
+
+    uint256 balanceABefore = tokenBalanceOf(e, Atoken, e.msg.sender);
+
+    initiateWithdraw_L2(e, Atoken, amount, e.msg.sender, toUnderlyingAsset);
+
+    uint256 balanceAAfter = tokenBalanceOf(e, Atoken, e.msg.sender);
+
+    assert (balanceABefore == balanceAAfter);
+}
+
+rule zerostaticATokenCantWithdrawUnderlying() {
+    env e;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 amount; 
+    bool toUnderlyingAsset; 
+
+    setupTokens(asset, Atoken, static);
+    setupUser(e.msg.sender);
+    require tokenBalanceOf(static, e.msg.sender) == 0;
+
+    uint256 balanceUBefore = tokenBalanceOf(e, asset, e.msg.sender);
+
+    initiateWithdraw_L2(e, asset, amount, e.msg.sender, toUnderlyingAsset);
+
+    uint256 balanceUAfter = tokenBalanceOf(e, asset, e.msg.sender);
+
+    assert (balanceUBefore == balanceUAfter);
+}
+
+rule zeroRewardsCantBridge() {
+    env e;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 amount; 
+    bool toUnderlyingAsset; 
+
+    setupTokens(asset, Atoken, static);
+    setupUser(e.msg.sender);
+    require tokenBalanceOf(static, e.msg.sender) == 0;
+
+    uint256 balanceRBefore = tokenBalanceOf(e, REWARD_TOKEN, e.msg.sender);
+
+    bridgeRewards_L2(e, e.msg.sender, amount);
+
+    uint256 balanceRAfter = tokenBalanceOf(e, REWARD_TOKEN, e.msg.sender);
+
+    assert (balanceRBefore == balanceRAfter);
+}
 ////////////////////////////////////////////////////////////////////////////
 //                       Functions                                        //
 ////////////////////////////////////////////////////////////////////////////
@@ -512,6 +649,7 @@ function requireValidUser(address user){
 function rewardToken() returns address {
     return REWARD_TOKEN;
 }
+
 
 // A function selector helper, to specify the receiver.
 function callFunctionSetParams(
