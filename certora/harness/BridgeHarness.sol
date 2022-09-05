@@ -14,6 +14,37 @@ contract BridgeHarness is Bridge {
     /*************************
      *        Getters        *
      *************************/
+    //HARNESS EXTRA FUNCTIONS TO GET THE LENGTH OF _approvedL1Tokens
+
+    function approvedTokensLength() external view returns (uint256) {
+        return _approvedL1Tokens.length;
+    }
+
+    function approvedToken(uint256 index) external view returns (address) {
+        return _approvedL1Tokens[index];
+    }
+
+    function aTokenData(address l1token) external view returns (uint256) {
+        return _aTokenData[l1token].l2TokenAddress;
+    }
+
+    function aTokenDataUnderlying(address l1token)
+        external
+        view
+        returns (address)
+    {
+        return address(_aTokenData[l1token].underlyingAsset);
+    }
+
+    function aTokenDataLendingPool(address l1token)
+        external
+        view
+        returns (address)
+    {
+        return address(_aTokenData[l1token].lendingPool);
+    }
+
+    ////////////////////////////////////////////////////
 
     function withdrawMessageStatus() external view returns (bool) {
         return withdrawMessageSent;

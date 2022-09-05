@@ -41,7 +41,11 @@ methods {
     withdraw(address, uint256, address, uint256, uint256, bool)
     updateL2State(address)
     receiveRewards(uint256, address, uint256)
-    
+    initializing() envfree//required to change initializing variable to public in nodemodules @aave/core-v3/contracts/protocol/libraries/aave-upgradeability/VersionedInitializable.sol
+    approvedToken(uint256) envfree
+    aTokenData(address) envfree
+    aTokenDataUnderlying(address) envfree
+    aTokenDataLendingPool(address) envfree
 /*************************
  *     BridgeHarness     *
  *************************/
@@ -57,7 +61,7 @@ methods {
     bridgeRewards_L2(address, uint256)
     getUnderlyingAssetOfAToken(address) returns (address) envfree
     underlyingtoAToken(address) returns (address) => DISPATCHER(true)
-
+    approvedTokensLength() envfree
 /******************************
  *     IStarknetMessaging     *
  ******************************/
@@ -108,7 +112,6 @@ methods {
     BRIDGE_L2.l2RewardsIndex() returns (uint256) envfree
     BRIDGE_L2.getStaticATokenAddress(address) returns (address) envfree
     BRIDGE_L2.address2uint256(address) returns (uint256) envfree
-    BRIDGE_L2.getRewTokenAddress()
 
 /******************
  *     Tokens     *
@@ -121,6 +124,8 @@ methods {
     STATIC_ATOKEN_A.burn(address, uint256)
     STATIC_ATOKEN_A.mint(address, uint256)
     STATIC_ATOKEN_A.totalSupply() envfree
+    STATIC_ATOKEN_A.getBridge() envfree
+    STATIC_ATOKEN_A.getOwner() envfree
 
 /******************
  *     Ray Math   *
@@ -403,16 +408,19 @@ rule sanity(method f) {
     assert false;
 }
 
-//MORE RULES
+//############################## MORE RULES #####################################
 
+// 1 - Zero address can't hold balance in any of the tokens involved
 invariant zeroAddressHasNoBalance(address asset, address Atoken, address static, env e)
     tokenBalanceOf(e, asset, 0) == 0 && tokenBalanceOf(e, Atoken, 0) == 0 && tokenBalanceOf(e, static, 0) == 0
 
+    //require setup
     {preserved {
         setupTokens(asset, Atoken, static);
         requireRayIndex(asset);
     }}
 
+// 2 - BridgeL2 is the only address that can burn StaticAtokens
 rule onlyL2BridgeCanBurn(address user) {
     env e;
     address Atoken; // AAVE Token
@@ -425,14 +433,17 @@ rule onlyL2BridgeCanBurn(address user) {
 
     setupTokens(asset, Atoken, static);
     requireRayIndex(asset);
+    require(STATIC_ATOKEN_A.getOwner() == BRIDGE_L2); //Require that the owner is The BRIDGE
 
-    uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();
+    uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();//added totalSupply to the methods spec
     STATIC_ATOKEN_A.burn(e, user, amount);
     uint256 supplySAfter =  STATIC_ATOKEN_A.totalSupply();
-   
-    assert supplySAfter < supplySBefore => e.msg.sender == static;
+
+    //only L2 bridge can alterate the supply
+    assert supplySAfter < supplySBefore => e.msg.sender == BRIDGE_L2;
 }
 
+// 3 - BridgeL2 is the only address that can mint StaticAtokens
 rule onlyL2BridgeCanMint(address user) {
     env e;
     address Atoken; // AAVE Token
@@ -445,34 +456,41 @@ rule onlyL2BridgeCanMint(address user) {
 
     setupTokens(asset, Atoken, static);
     requireRayIndex(asset);
+    require(STATIC_ATOKEN_A.getOwner() == BRIDGE_L2); //Require that the owner is The BRIDGE
 
-    uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();
+    uint256 supplySBefore =  STATIC_ATOKEN_A.totalSupply();//added totalSupply to the methods spec
     STATIC_ATOKEN_A.mint(e, user, amount);
     uint256 supplySAfter =  STATIC_ATOKEN_A.totalSupply();
-   
-    assert supplySAfter > supplySBefore => e.msg.sender == static;
+    
+    //only L2 bridge can alterate the supply
+    assert supplySAfter > supplySBefore => e.msg.sender ==  BRIDGE_L2;
 }
 
-rule zerostaticATokenCantClaimRewards() {
+//4 - Address with zero avaible rewards can't bridge rewards to L1
+rule zeroRewardsCantBridge() {
     env e;
+    address receiver;
     address Atoken; // AAVE Token
     address asset;  // underlying asset
     address static; // staticAToken
+    uint256 amount; 
+    bool toUnderlyingAsset; 
 
+    //setup
     setupTokens(asset, Atoken, static);
     setupUser(e.msg.sender);
-    require tokenBalanceOf(static, e.msg.sender) == 0;
 
-    uint256 rewardBalanceBefore = tokenBalanceOf(e, BRIDGE_L2.getRewTokenAddress(), e.msg.sender);
+    require tokenBalanceOf(e, REWARD_TOKEN, e.msg.sender) == 0;
+    require receiver != currentContract;
 
-    claimRewardsStatic_L2(e, static);
+    //with zerorewardsbalance bridgeRewards_L2 always reverts
+    bridgeRewards_L2@withrevert(e, receiver, amount);
 
-    uint256 rewardBalanceAfter = tokenBalanceOf(e, BRIDGE_L2.getRewTokenAddress(), e.msg.sender);
-
-    assert (rewardBalanceBefore == rewardBalanceAfter);
+    assert (lastReverted);
 }
 
-rule zerostaticATokenCantWithdrawAtokens() {
+//5 - Address with zero static Atokens can't withdraw Atokens to L1
+rule zerostaticATokenCantWithdrawAtokens(address recipient) {
     env e;
     address Atoken; // AAVE Token
     address asset;  // underlying asset
@@ -480,19 +498,20 @@ rule zerostaticATokenCantWithdrawAtokens() {
     uint256 amount; 
     bool toUnderlyingAsset; 
 
+    //setup
     setupTokens(asset, Atoken, static);
     setupUser(e.msg.sender);
-    require tokenBalanceOf(static, e.msg.sender) == 0;
+    require tokenBalanceOf(e, static, e.msg.sender) == 0;
+    require recipient != Atoken;
+    require recipient != currentContract;
 
-    uint256 balanceABefore = tokenBalanceOf(e, Atoken, e.msg.sender);
+    //with zerostaticAToken balance initiateWithdraw_L2 to Atoken always reverts
+    initiateWithdraw_L2@withrevert(e, Atoken, amount, recipient, toUnderlyingAsset);
 
-    initiateWithdraw_L2(e, Atoken, amount, e.msg.sender, toUnderlyingAsset);
-
-    uint256 balanceAAfter = tokenBalanceOf(e, Atoken, e.msg.sender);
-
-    assert (balanceABefore == balanceAAfter);
+    assert (lastReverted);
 }
 
+//6 - Address with zero static Atokens can't withdraw Underlying to L1
 rule zerostaticATokenCantWithdrawUnderlying() {
     env e;
     address Atoken; // AAVE Token
@@ -501,39 +520,316 @@ rule zerostaticATokenCantWithdrawUnderlying() {
     uint256 amount; 
     bool toUnderlyingAsset; 
 
+    //setup
     setupTokens(asset, Atoken, static);
     setupUser(e.msg.sender);
-    require tokenBalanceOf(static, e.msg.sender) == 0;
+    require tokenBalanceOf(e, static, e.msg.sender) == 0;
 
-    uint256 balanceUBefore = tokenBalanceOf(e, asset, e.msg.sender);
+    //with zerostaticAToken balance initiateWithdraw_L2 to underlyring always reverts
+    initiateWithdraw_L2@withrevert(e, asset, amount, e.msg.sender, toUnderlyingAsset);
 
-    initiateWithdraw_L2(e, asset, amount, e.msg.sender, toUnderlyingAsset);
-
-    uint256 balanceUAfter = tokenBalanceOf(e, asset, e.msg.sender);
-
-    assert (balanceUBefore == balanceUAfter);
+    assert (lastReverted);
 }
 
-rule zeroRewardsCantBridge() {
+//7 - Can't initialize twice, must change 
+rule cannotInitializeTwice()
+{   
+    address Atoken;
+    address asset;
+    env e;
+    calldataarg args;
+
+    // changed initializing variable to public in nodemodules @aave/core-v3/contracts/protocol/libraries/aave-upgradeability/VersionedInitializable.sol
+    // in order to make it not true
+    require(!initializing());
+
+    require getUnderlyingAssetHelper(Atoken) == 0;
+    require getATokenOfUnderlyingAsset(LENDINGPOOL_L1, asset) == 0;
+    
+    //first time initialize succeeds
+    initialize(e, args);
+
+    //second time always reverts
+    initialize@withrevert(e, args);
+
+    assert lastReverted;
+}
+
+//8 - After rewards have been claimed, another call to claim rewards would revert
+rule cannotClaimRewardsTwiceInARow() {
     env e;
     address Atoken; // AAVE Token
     address asset;  // underlying asset
     address static; // staticAToken
-    uint256 amount; 
-    bool toUnderlyingAsset; 
 
+    //setup
     setupTokens(asset, Atoken, static);
     setupUser(e.msg.sender);
-    require tokenBalanceOf(static, e.msg.sender) == 0;
 
-    uint256 balanceRBefore = tokenBalanceOf(e, REWARD_TOKEN, e.msg.sender);
+    //first time claiming succeeds
+    claimRewardsStatic_L2(e, static);
+    //second consecutive time reverts
+    claimRewardsStatic_L2@withrevert(e, static);
 
-    bridgeRewards_L2(e, e.msg.sender, amount);
-
-    uint256 balanceRAfter = tokenBalanceOf(e, REWARD_TOKEN, e.msg.sender);
-
-    assert (balanceRBefore == balanceRAfter);
+    assert (lastReverted);
 }
+
+//9 - Owner of StaticAtoken and variable BridigeL2 should always be the same
+invariant staticATokenOwnerAlwaysEqualsL2Bridge()
+    //implemented this new getters in DummyStaticAtokenImpl.sol to get Owner and _L2Bridge variables
+    STATIC_ATOKEN_A.getOwner() == STATIC_ATOKEN_A.getBridge()
+
+
+
+//10 - Only initialize() approves new tokens
+rule approvedL1TokensChangeOnlyOnInitialize(method f) {
+    env e;
+    calldataarg args;
+
+    //length of the approved tokens array before
+    uint256 tokensBefore = approvedTokensLength();
+    f(e, args);
+    //length of the approved tokens array after
+    uint256 tokensAfter = approvedTokensLength();
+
+    //if theres a change the function called can only be initialize
+    assert tokensAfter != tokensBefore => f.selector == initialize(uint256, address, address, address[], uint256[]).selector;
+
+}
+
+//11 - Every L1approved token has a L2related one
+invariant everyL1ApprovedTokenHasRelatedL2(uint index)
+    aTokenData(approvedToken(index)) != 0
+
+    //require to make sure it doesnt access map out of bound
+    {preserved {
+        require index < approvedTokensLength();
+    }}
+
+//12 - Sender balances update correctly after deposit
+rule depositUpdatesSenderBalancesCorrect(uint256 amount)
+{
+    env eB;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 l2Recipient = BRIDGE_L2.address2uint256(eB.msg.sender);
+    uint16 referralCode;
+    bool fromUA; // (deposit) from underlying asset
+
+    //setup
+    setupTokens(asset, Atoken, static);
+    setupUser(eB.msg.sender);
+    requireRayIndex(asset);
+
+    //balances before
+    uint256 balanceU1 = tokenBalanceOf(eB, asset, eB.msg.sender);
+    uint256 balanceA1 = tokenBalanceOf(eB, Atoken, eB.msg.sender);
+    
+    //sender deposits to l2recipient
+    uint256 staticAmount = deposit(eB, Atoken, l2Recipient, amount, referralCode, fromUA);
+  
+    //balances after
+    uint256 balanceU2 = tokenBalanceOf(eB, asset, eB.msg.sender);
+    uint256 balanceA2 = tokenBalanceOf(eB, Atoken, eB.msg.sender);
+
+    //if deposit is from UnderlyingAsset
+    assert fromUA => (balanceU1 - amount == balanceU2) && (balanceA1 == balanceA1);
+    //if deposit is from Atokens
+    //rounding errors +- 2
+    assert !fromUA => ((balanceA1 - amount == balanceA2 + 1) || (balanceA1 - amount == balanceA2) || (balanceA1 - amount == balanceA2 - 1) 
+    || (balanceA1 - amount == balanceA2 + 2) || (balanceA1 - amount == balanceA2) || (balanceA1 - amount == balanceA2 - 2)) && (balanceU1 == balanceU2);
+}
+
+//13 - StaticAToken increases by the correct amount after deposit
+rule depositL2BalanceCorrectness(uint256 amount)
+{
+    env eB; env eF;
+    address Atoken; // AAVE Token
+    address asset;  // underlying asset
+    address static; // staticAToken
+    uint256 l2Recipient = BRIDGE_L2.address2uint256(eF.msg.sender);
+    uint16 referralCode;
+    bool fromUA;
+
+    setupTokens(asset, Atoken, static);
+    setupUser(eF.msg.sender);
+    require eF.msg.sender != eB.msg.sender;
+
+    //static balance before
+    uint256 balanceS1 = tokenBalanceOf(eF, static, eF.msg.sender);
+    
+    //deposit to l2recipient
+    uint256 staticAmount = deposit(eB, Atoken, l2Recipient, amount, referralCode, fromUA);
+  
+    //static balance after
+    uint256 balanceS2 = tokenBalanceOf(eF, static, eF.msg.sender);
+
+    //balance correctly change
+    assert (balanceS1 + staticAmount == balanceS2);
+}
+
+//14 - If a balance of reward tokens changed, then deposit or withdrawal must have been called.
+rule balanceOfStaticAtokenChanged(method f, uint256 amount)
+filtered{f -> messageSentFilter(f)} {
+    env e;    
+    address asset;
+    address AToken;
+    address static;
+    address recipient;
+    bool fromToUA;
+    
+    setupTokens(asset, AToken, static);
+    setupUser(e.msg.sender);
+
+    // static balances of recipient before call.
+    uint256 recipientBalanceA1 = tokenBalanceOf(e, static, recipient);
+
+    // Call any interface function 
+    callFunctionSetParams(f, e, recipient, AToken, asset, amount, fromToUA);
+
+    // static balances of recipient after call.
+    uint256 recipientBalanceA2 = tokenBalanceOf(e, static, recipient);
+
+    bool balancesChanged = !(
+        recipientBalanceA1 == recipientBalanceA2);
+
+    assert balancesChanged =>
+            (f.selector == deposit(address, uint256, uint256, uint16, bool).selector 
+            ||
+            f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector);
+}
+
+//15 - If a balance of reward tokens changed, then deposit or withdrawal must have been called.
+rule balanceOfRewardsChanged(method f, uint256 amount)
+filtered{f -> messageSentFilter(f)} {
+    env e;    
+    address asset;
+    address AToken;
+    address static;
+    address recipient;
+    bool fromToUA;
+    
+    setupTokens(asset, AToken, static);
+    setupUser(e.msg.sender);
+
+    // static balances of recipient before call.
+    uint256 recipientBalanceA1 = tokenBalanceOf(e, REWARD_TOKEN, recipient);
+
+    // Call any interface function 
+    callFunctionSetParams(f, e, recipient, AToken, asset, amount, fromToUA);
+
+    // static balances of recipient after call.
+    uint256 recipientBalanceA2 = tokenBalanceOf(e, REWARD_TOKEN, recipient);
+
+    bool balancesChanged = !(
+        recipientBalanceA1 == recipientBalanceA2);
+
+    assert balancesChanged =>
+            (f.selector == bridgeRewards_L2(address, uint256).selector
+            ||
+            f.selector == claimRewardsStatic_L2(address).selector
+            ||
+            f.selector == initiateWithdraw_L2(address, uint256, address, bool).selector);
+}
+
+//16 - Static balance updates correctly after withdraw, this rule makes the already existing rule integrityOfWithdraw() more exact.
+rule staticATokenAmountAfterWithdraw(address recipient){
+    bool toUnderlyingAsset;
+    uint256 staticAmount; 
+    env e; calldataarg args;
+    address underlying;
+    address static;
+    address aToken;
+    uint256 l2RewardsIndex = BRIDGE_L2.l2RewardsIndex();
+    
+    //setup
+    setupTokens(underlying, aToken, static);
+    setupUser(e.msg.sender);
+    require recipient != aToken;
+    require recipient != currentContract;
+
+    // static balances of recipient before call.
+    uint256 staticTokenBalanceBefore = tokenBalanceOf(e, static, e.msg.sender);
+
+    //call to withdraw
+    initiateWithdraw_L2(e, aToken, staticAmount, recipient, toUnderlyingAsset);
+
+    // static balances of recipient after call.
+    uint256 staticTokenBalanceAfter = tokenBalanceOf(e, static, e.msg.sender);
+
+    assert staticTokenBalanceBefore - staticAmount == staticTokenBalanceAfter;
+}
+
+//17 - Balance updates correctly after withdraw to Underlying, this rule makes the already existing rule integrityOfWithdraw() more exact.
+rule underlyingAmountAfterWithdraw(address recipient){
+    bool toUnderlyingAsset;
+    uint256 staticAmount; 
+    env e; calldataarg args;
+    address underlying;
+    address static;
+    address aToken;
+    uint256 l2RewardsIndex = BRIDGE_L2.l2RewardsIndex();
+    
+    setupTokens(underlying, aToken, static);
+    setupUser(e.msg.sender);
+    require recipient != aToken;
+    require recipient != currentContract;
+
+    //balances of recipient before call.
+    uint256 underlyingBalanceBefore = tokenBalanceOf(e, underlying, recipient);
+    uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
+
+    //Withdraw
+    initiateWithdraw_L2(e, aToken, staticAmount, recipient, toUnderlyingAsset);
+
+    //balances of recipient after call.
+    uint256 underlyingBalanceAfter = tokenBalanceOf(e, underlying, recipient);
+    uint256 aTokenBalanceAfter = tokenBalanceOf(e, aToken, recipient);
+    
+    //convert staticAmount to dynamic 
+    address underlyingAsset = aTokenDataUnderlying(aToken);
+    address lendingPool = aTokenDataLendingPool(aToken);
+    uint256 dynm = _staticToDynamicAmount_Wrapper(staticAmount, underlyingAsset, lendingPool);
+
+    assert toUnderlyingAsset => (underlyingBalanceAfter - dynm == underlyingBalanceBefore) && (aTokenBalanceAfter == aTokenBalanceBefore);
+}
+
+//18 - Balance updates correctly after withdraw to Atoken, this rule makes the already existing rule integrityOfWithdraw() more exact.
+rule staticAmountAfterWithdraw(address recipient){
+    bool toUnderlyingAsset;
+    uint256 staticAmount; 
+    env e; calldataarg args;
+    address underlying;
+    address static;
+    address aToken;
+    uint256 l2RewardsIndex = BRIDGE_L2.l2RewardsIndex();
+    
+    setupTokens(underlying, aToken, static);
+    setupUser(e.msg.sender);
+    require recipient != aToken;
+    require recipient != currentContract;
+
+    //balances of recipient before call.
+    uint256 underlyingBalanceBefore = tokenBalanceOf(e, underlying, recipient);
+    uint256 aTokenBalanceBefore = tokenBalanceOf(e, aToken, recipient);
+
+    //Withdraw
+    initiateWithdraw_L2(e, aToken, staticAmount, recipient, toUnderlyingAsset);
+
+    //balances of recipient after call.
+    uint256 underlyingBalanceAfter = tokenBalanceOf(e, underlying, recipient);
+    uint256 aTokenBalanceAfter = tokenBalanceOf(e, aToken, recipient);
+    
+     //convert staticAmount to dynamic 
+    address underlyingAsset = aTokenDataUnderlying(aToken);
+    address lendingPool = aTokenDataLendingPool(aToken);
+    uint256 dynm = _staticToDynamicAmount_Wrapper(staticAmount, underlyingAsset, lendingPool);
+
+    assert !toUnderlyingAsset => (aTokenBalanceAfter - dynm == aTokenBalanceBefore) && (underlyingBalanceBefore == underlyingBalanceAfter);
+}
+
+
 ////////////////////////////////////////////////////////////////////////////
 //                       Functions                                        //
 ////////////////////////////////////////////////////////////////////////////
